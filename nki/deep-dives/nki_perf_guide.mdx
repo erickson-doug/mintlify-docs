@@ -1,0 +1,473 @@
+---
+title: "NKI performance optimizations"
+description: "A recipe to find performance bottlenecks of NKI kernels and apply common software optimizations to address them, using neuron-profile to guide your efforts."
+sidebarTitle: "Performance guide"
+icon: "bolt"
+---
+
+In this document we describe a recipe to find performance bottlenecks of NKI kernels and apply common software optimizations to address them. We showcase how to leverage [Neuron Explorer](/nki/guides/use-neuron-profile) — a GUI-based performance profiler designed for NeuronDevices — to guide your performance optimization efforts. Before proceeding, read the [Trainium/Inferentia2 architecture guide](/nki/guides/architecture/trainium_inferentia2_arch) to familiarize yourself with Neuron hardware architecture.
+
+Ideally, performance optimization ends with one of two outcomes: execution of a NKI kernel is either strictly **compute-bound** or **memory-bound**. On NeuronDevices, compute-bound means at least one of the compute engines is active close to 100% of the kernel execution time (90%+ is good in practice), while memory-bound typically means achieved device memory bandwidth utilization (MBU) is close to 100% (60%+ is good in practice). For compute-bound kernels that are matmul-dominated, aim for close to 100% model FLOPs utilization (MFU). All of these metrics are available under the `Summary` tab in `neuron-profile`:
+
+<Frame caption="MBU metric in neuron-profile">
+  <img src="/images/nki/img/nki_perf_guide/fig1.png" alt="Memory bandwidth utilization metric in neuron-profile" />
+</Frame>
+
+<Frame caption="Compute-related metrics in neuron-profile">
+  <img src="/images/nki/img/nki_perf_guide/fig2.png" alt="Compute engine utilization and MFU metrics" />
+</Frame>
+
+The rest of this document is divided into three sections:
+
+1. Optimizations to maximize achieved arithmetic intensity, minimizing compute-engine idle periods due to unnecessary data movement.
+2. Improving compute-engine efficiency.
+3. Improving data-movement efficiency.
+
+## Improving arithmetic intensity
+
+Arithmetic intensity of a workload is commonly defined as the average number of computation operations performed per byte of data accessed from memory. On NeuronDevices, the definition refers to data accessed from *device memory* (HBM), since on-chip memory (SBUF) has sufficient bandwidth to keep all compute engines busy.
+
+When arithmetic intensity is overly low, compute engines consume data much faster than DMA engines fetch data from device memory into SBUF. In this case, execution is bounded by available device-memory bandwidth. Once arithmetic intensity exceeds a threshold — the ratio of maximum compute throughput over memory bandwidth — the performance bottleneck shifts to how fast compute engines can perform computation, leading to a compute-bound execution.
+
+<Frame caption="The Roofline Model">
+  <img src="/images/nki/img/nki_perf_guide/fig3.png" alt="Roofline model showing memory-bound and compute-bound regions as a function of arithmetic intensity" />
+</Frame>
+
+*Algorithmic* arithmetic intensity is an intrinsic characteristic of the workload, dependent only on the compute algorithm. In reality, due to limited SBUF capacity, the *achieved* arithmetic intensity of a NKI kernel implementation could be lower than the algorithmic arithmetic intensity. This can lead to excessive compute-engine idle time blocked by data-movement completions. Two typical reasons: *input data reloading* and *intermediate data spillage*.
+
+### Opt #1: Exploit temporal locality to minimize input data reloading
+
+**Symptom.** In neuron-profile, if a NKI kernel triggers DMAs (`nl.load`) for the same input tensor multiple times, you'll see the relevant DMA activities (on the timeline row with a label starting with `q` and ending with `IO`) highlighted in an orange box. Hovering over the "+" sign of the box in the top-left corner brings up a performance-warning pop-up indicating which input tensor is being reloaded, its size, and how many times it was reloaded.
+
+<Frame caption="Performance warning on input data reloading">
+  <img src="/images/nki/img/nki_perf_guide/fig4.png" alt="neuron-profile warning showing tensor u reloaded ~7 times" />
+</Frame>
+
+**Optimization.** Input-tensor reloading can be avoided if the same data stays in SBUF across all operations that consume it. However, keeping too much data in SBUF across operations increases memory pressure in SBUF, leading to more spilling of intermediate data. Avoiding input reload is a trade-off you need to make carefully.
+
+<Frame caption="SBUF usage impact with and without input reloading">
+  <img src="/images/nki/img/nki_perf_guide/fig5.png" alt="SBUF occupancy timelines comparing reload vs cached approaches" />
+</Frame>
+
+A classic example is in a matrix-multiplication kernel, where we exploit data reuse in the same rows of the LHS input matrix across different columns of the RHS matrix. See [Matmul NKI tutorial optimization 1–3](/nki/guides/tutorials/matrix_multiplication) for detailed discussion. Another example is the [Fused Mamba](/nki/guides/tutorials/fused_mamba) kernel tutorial, where you can minimize reloading of the largest input tensors through loop reordering.
+
+### Opt #2: Fuse operations to minimize intermediate data spilling
+
+**Symptom.** In `neuron-profile`, find data-movement metrics in the `Summary` tab:
+
+<Frame caption="neuron-profile Summary tab">
+  <img src="/images/nki/img/nki_perf_guide/fig6.png" alt="neuron-profile Summary tab showing data movement metrics" />
+</Frame>
+
+<Frame caption="Data-movement metrics">
+  <img src="/images/nki/img/nki_perf_guide/fig7.png" alt="spill_save_bytes, spill_reload_bytes, sb_read_bytes, sb_write_bytes metrics" />
+</Frame>
+
+`spill_save_bytes` refers to the total size of intermediate data the workload spills from SBUF into device memory; `spill_reload_bytes` indicates total size of spilled data reloaded back into SBUF. Comparing `spill_save_bytes` against `sb_read_bytes` shows how much SBUF→HBM traffic is spill-related. Comparing `spill_reload_bytes` against `sb_write_bytes` indicates how much HBM→SBUF traffic is spill-related. If spill-related traffic exceeds about 30%, it's worth investigating this optimization.
+
+**Optimization.** To reduce spilling, find operator-fusion opportunities. To achieve fusion, slice computation of each operator and perform computation for a portion of the input tensor at a time. For a chain `op0 → op1` on a large input tensor `kernel_in_hbm` that can't fit in SBUF:
+
+```text
+for tile in kernel_in_hbm:
+    tile_sbuf = load(tile)
+    op0_out_sbuf = op0(tile_sbuf)
+    # compiler-generated spilling, or NKI programmers explicitly perform a store
+    spill_save(op0_out_sbuf, op0_out_hbm)
+
+for tile in op1_out_device_memory:
+    tile_sbuf = spill_reload(tile)
+    op1_out_sbuf = op1(tile_sbuf)
+    store(op1_out_sbuf, kernel_out_hbm)
+```
+
+If we fuse the operators:
+
+```text
+for tile in kernel_in_hbm:
+    tile_sbuf = load(tile)
+    op0_out_sbuf = op0(tile_sbuf)
+    op1_out_sbuf = op1(op0_out_sbuf)
+    store(op1_out_sbuf, kernel_out_hbm)
+```
+
+Inside a NKI kernel, operator fusion is done through explicit loop fusion.
+
+A great use of this optimization is self-attention in Transformer models. Self-attention performs a chain: `matmul_0 → softmax → matmul_1`, where `matmul_0` of a single attention head produces a large intermediate tensor shape that overflows SBUF in common Transformer models with context lengths in the thousands.
+
+If there are no opportunities for operation fusion, consider caching as described in **Opt #1**. If caching is already implemented with blocking, oversized block size might be causing spills. See the [matmul tutorial](/nki/guides/tutorials/matrix_multiplication) for block-sizing details.
+
+**Optimization gotchas.** Certain code patterns in NKI might lead to unexpected spilling. As an example, buffers sometimes need to be declared within the inner loop to avoid spilling. Instead of:
+
+```python
+buf = nl.ndarray((2, 4, nl.par_dim(128), 512), buffer=nl.sbuf)
+for i0 in nl.affine_range(2):
+    for i1 in nl.affine_range(4):
+        buf[i0, i1, ...] = nl.load(...)
+        ...
+```
+
+Implement:
+
+```python
+for i0 in nl.affine_range(2):
+    for i1 in nl.affine_range(4):
+        buf = nl.ndarray((nl.par_dim(128), 512), buffer=nl.sbuf)
+        buf[...] = nl.load(...)
+```
+
+With the optimizations above, kernel execution should achieve an arithmetic intensity somewhat close to the algorithmic arithmetic intensity. At this point, you can observe from the execution timeline in `neuron-profile` whether the kernel spends more time in compute or DMA engines. The `engine/dma_active_time_percent` metrics in the Summary tab give good hints. If your kernel is compute-dominated, go over [optimizing compute efficiency](#optimizing-compute-efficiency) first. Otherwise, jump to [optimizing data-movement efficiency](#optimizing-data-movement-efficiency).
+
+## Optimizing compute efficiency
+
+Compute-efficiency optimizations fall into two categories:
+
+1. **Time-domain engine utilization** — reduce engine idle time to keep the compute engine *on critical path* as busy as possible (for example, enabling pipelining among engines).
+2. **Spatial-domain engine utilization** — within the engine's active periods, increase instruction efficiency to use as many hardware units within the engine as possible (for example, combining multiple instructions into one).
+
+### Reducing engine idle time
+
+To improve the active time of a compute engine, understand the exact reasons for the engine to enter an idle state. In neuron-profile, focus on the execution trace of the bottlenecked engine and zoom into the visually large engine idle gaps.
+
+<Frame caption="Engine idle gaps">
+  <img src="/images/nki/img/nki_perf_guide/fig8.png" alt="neuron-profile showing VectorE idle gaps" />
+</Frame>
+
+<Note>
+  For faster GUI rendering, neuron-profile enables data sampling by default and "hides" certain instructions from the timeline with a large profile. To confirm an engine has an idle gap, zoom into a smaller region and turn on **Show unsampled data** in `View Edit Settings`.
+</Note>
+
+<Frame caption="Show unsampled data in neuron-profile">
+  <img src="/images/nki/img/nki_perf_guide/fig9.png" alt="View settings showing unsampled data toggle" />
+</Frame>
+
+For each engine idle gap, find out why the engine can't execute instructions by inspecting the **semaphore wait condition** of the first instruction executed on the engine after the gap. These semaphore wait conditions are either waiting for (1) other compute-engine instructions or (2) DMA activities to finish.
+
+#### Opt #3: Overlap execution across compute engines through pipelining
+
+**Symptom.** The semaphore wait condition of the first instruction after an idle gap is on a semaphore name that matches a compute-engine name in NeuronCore — Vector, Scalar, GpSimd, and Tensor. These semaphores are associated with instruction completion on the corresponding compute engine.
+
+For example, the `TENSOR_TENSOR` instruction on VectorE below is waiting for `S[4] (Scalar)` to reach a value of 36 — VectorE was waiting for ScalarE to finish certain instructions.
+
+<Frame caption="Semaphore wait on another compute engine">
+  <img src="/images/nki/img/nki_perf_guide/fig10.png" alt="Instruction detail showing TENSOR_TENSOR on VectorE waiting on ScalarE semaphore" />
+</Frame>
+
+**Optimization.** When there's a sequence of operators on different compute engines, slice the computation so engines can process tiles of the original operator in a pipeline fashion. For two back-to-back operators on a large tensor `X`: `X → op0 → Y → op1 → Z`, with `op0` on ScalarE and `op1` on VectorE:
+
+<Frame caption="Engine timeline with and without engine pipelining">
+  <img src="/images/nki/img/nki_perf_guide/fig11.png" alt="Serialized vs pipelined timelines showing reduced idle time" />
+</Frame>
+
+Without pipelining, VectorE is fully idle while ScalarE executes `op0` on tensor `X` in the first half. With pipelining, ScalarE produces partial results in tiles and unblocks VectorE as soon as the first tile is processed. Engine pipelining shortens end-to-end latency through shrinking engine idle time and improving hardware utilization.
+
+Choosing a proper tile size is crucial. For complex kernels, you often schedule a pipeline among all engines: Tensor / Scalar / Vector / GpSimd Engine.
+
+In Transformer self-attention, in addition to fusing `matmul_0(Q, K) → softmax → matmul_1(softmax_out, V)` in a single kernel (**Opt #2**), form a complex engine pipeline to maximize utilization:
+
+- `matmul_0` / `matmul_1` — TensorE
+- `softmax`:
+  - exponential — ScalarE
+  - summation — VectorE
+  - scale by reciprocal of summation — ScalarE
+  - for causal self-attention, triangular masking — GpSimdE
+
+#### Opt #4: Overlap data loading with computation
+
+**Symptom.** The semaphore wait condition of the first instruction after an idle gap is on a semaphore name that starts with `q`. These semaphores are associated with DMA-activity completion.
+
+<Frame caption="Instruction waiting for input data loading">
+  <img src="/images/nki/img/nki_perf_guide/fig12.png" alt="EVENT_SEMAPHORE waiting on qSyncIO0 for DMA completion" />
+</Frame>
+
+Similarly, if an instruction is blocked on `S[47] (qSyncSpillReload0)`, it's blocked by DMA activities for spilling.
+
+<Frame caption="Instruction waiting for spilled data reloading">
+  <img src="/images/nki/img/nki_perf_guide/fig13.png" alt="Instruction blocked on qSyncSpillReload0" />
+</Frame>
+
+Clicking the DMA activities on `qSyncSpillReload0` immediately before the `EVENT_SEMAPHORE` instruction lets you find the intermediate NKI tensor name that was spilled/reloaded. Spill/reload DMA transfers are generated by the Neuron compiler automatically by analyzing SBUF usage in NKI kernels — they don't have an associated explicit NKI API call or `nki_source_location`.
+
+<Frame caption="Spilled tensor variable name">
+  <img src="/images/nki/img/nki_perf_guide/fig14.png" alt="Profile showing the NKI tensor variable name that was spilled" />
+</Frame>
+
+**Optimization.** Overlapping data loading with compute is similar to enabling compute-engine pipelining in **Opt #3**, since DMA engines can move data in parallel to compute-engine execution.
+
+<Frame caption="DMA and engine timeline with and without overlapping">
+  <img src="/images/nki/img/nki_perf_guide/fig15.png" alt="Comparison of serialized vs overlapped DMA and engine timelines" />
+</Frame>
+
+It's possible that even after maximizing overlap of compute and data movement, the data-movement duration still isn't hidden behind compute even though your kernel has a compute-bound arithmetic intensity. The most common cause is that data movement isn't using the DMA engines *efficiently*. See [optimizing data-movement efficiency](#optimizing-data-movement-efficiency) for relevant optimization techniques.
+
+For a concrete example, see how to properly overlap compute and data movement in a compute-bound (VectorE as the bottlenecked engine) kernel in the [Mamba tutorial](/nki/guides/tutorials/fused_mamba).
+
+### Improving engine efficiency
+
+Once you've avoided engine idle gaps as much as possible, focus on improving engine efficiency during the engine's busy periods. Start with two techniques generally applicable to all compute engines, followed by TensorE-specific techniques.
+
+#### Opt #5a: Use sufficiently large input tiles in free dimension
+
+**Symptom.** Certain operators trigger many back-to-back instructions with small free-dimension sizes in the input tensors. In this profile, ScalarE is busy with many repeated `activation` instructions — the source tensor access pattern is `fp32@20580[1,1,1][1,1,1]`, where the first set of brackets indicates 3D strides and the second set indicates 3D shape in FP32 elements.
+
+Each back-to-back instruction reads **one** element per partition from SBUF — roughly one engine cycle of useful computation — but the static instruction overhead of ~100 cycles limits overall throughput.
+
+Worse, these instructions have data dependency (read-after-write) between consecutive instructions — the next instruction can't start reading data until the previous instruction's output has been committed to the local SRAM. Initiation interval for these instructions on ScalarE is around 189 ns (264 ScalarE cycles on NC-v2), much higher than the useful computation cost (one ScalarE cycle throughput-wise).
+
+<Frame caption="Many back-to-back ScalarE instructions with small tensor shapes">
+  <img src="/images/nki/img/nki_perf_guide/fig16.png" alt="Long sequence of single-element ScalarE activation instructions" />
+</Frame>
+
+**Optimization.** Increase the free-dimension size of instruction input tiles. NeuronCore compute engines typically require at least 128 elements/partition in the source tensor to be efficient. Increasing free-dimension sizes may not be trivial due to the high-level computation definition. Walk through the [architecture guide](/nki/guides/architecture/trainium_inferentia2_arch) in detail to better understand capabilities of different compute engines and map high-level operators onto the engines using the most suitable instructions — invoked through `nki.language` or `nki.isa` APIs.
+
+There's a trade-off in choosing the free-dimension size: too small exposes significant instruction overhead leading to inefficient engine execution; too large leads to inefficient pipelining between engines (working against **Opt #3**) and high memory pressure in SBUF (working against **Opt #2**).
+
+As an example, a naive implementation of the prefix-sum scan operation in Mamba v1 triggers `seq_len` back-to-back single-element `nki.isa.tensor_scalar` instructions, where `seq_len` is typically in the thousands. A more efficient approach uses the VectorE instruction [`nisa.tensor_tensor_scan`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.tensor_tensor_scan.html). See the [Mamba tutorial](/nki/guides/tutorials/fused_mamba) for more discussion.
+
+#### Opt #5b: Use sufficiently large input tiles in partition dimension
+
+**Symptom.** When instructions use input/output tiles that span fewer than 128 partitions, they typically under-utilize compute-engine capabilities — each SBUF/PSUM partition has a one-to-one mapping to parallel vector lanes in the compute engines. A `TENSOR_TENSOR` instruction on VectorE that takes a source tensor in SBUF occupying 64 partitions (`channels=64`) would take the same time as `channels=128`.
+
+<Frame caption="An instruction that reads/writes fewer than 128 partitions">
+  <img src="/images/nki/img/nki_perf_guide/fig17.png" alt="Instruction operand showing channels=64 under-utilizing VectorE" />
+</Frame>
+
+Similarly, for a `MultiplyMoving` instruction on TensorE, if the read/write tiles don't span the full SBUF/PSUM partitions, TensorE is underutilized. A `MultiplyMoving` that writes to 96 partitions in PSUM (`128*96` operand) uses 128 rows and 96 columns of processing elements out of the available 128×128 systolic array.
+
+<Frame caption="MultiplyMoving instruction that uses fewer than 128 TensorE columns">
+  <img src="/images/nki/img/nki_perf_guide/fig18.png" alt="MultiplyMoving instruction writing to 96 PSUM partitions" />
+</Frame>
+
+**Optimization.** If you see **many back-to-back instructions** on the compute engine with fewer than 128 partitions in input/output tiles, consider **partition vectorization**.
+
+For example, two `nki.isa.nc_matmul()` instructions each generating a 64-partition PSUM tile of the same shape, then VectorE runs `nki.isa.tensor_reduce()` on both tiles. On trn1/inf2, VectorE can't run the two independent `nki.isa.tensor_reduce()` instructions in parallel, even though the total compute lanes don't exceed 128. To improve utilization:
+
+1. The two `nc_matmul()` instructions write to disjoint PSUM partitions: partition 0–63 for the first `nc_matmul` and partition 64–127 for the second.
+2. Invoke a single `nki.isa.tensor_reduce()` instruction to process output of both `nc_matmul()` instructions.
+
+```python
+import nki.isa as nisa
+import nki.language as nl
+
+# Option 1: no partition vectorization
+# two 64-partition vector instructions running serially
+
+# By default, NKI creates mm_tile0 and mm_tile1 in partition 0–63
+mm_tile0 = nisa.nc_matmul(...)
+mm_tile1 = nisa.nc_matmul(...)
+
+# Both nki.isa.reduce instructions move data from psum partition 0–63
+# in a serialized fashion
+reduce0 = nisa.tensor_reduce(mm_tile0, ...)
+reduce1 = nisa.tensor_reduce(mm_tile1, ...)
+
+# Option 2: partition vectorization
+# vectorized into one 128-partition vector instruction
+
+# Explicitly declare a 128-partition tensor in PSUM
+mm_tile = nl.zeros((128, ...), np.float32, buffer=nl.psum)
+
+i_output0_p = nl.arange(64)[:, None]
+i_output1_p = 64 + nl.arange(64)[:, None]
+# Assign first part of mm_tile to partition 0–63
+mm_tile[i_output0_p, ...] = nki.isa.nc_matmul(...)
+# Assign second part of mm_tile to partition 64–127
+mm_tile[i_output1_p, ...] = nki.isa.nc_matmul(...)
+
+# A single nki.isa.reduce instruction, using all 128 partitions
+reduce = nisa.tensor_reduce(mm_tile, ...)
+```
+
+Option 2 performs the reduction 2× faster by vectorizing the partition dimension and performing a single reduction instead of two.
+
+#### Opt #6: Combine instructions
+
+**Symptom.** Even though most popular ML models are matmul-heavy, certain operators can be vector/scalar-operation heavy — such as self-attention in Transformer models. These operators typically bottleneck VectorE or ScalarE. The profile below shows the inner loop of self-attention, where either VectorE or ScalarE is busy at any moment while TensorE has clear idle gaps.
+
+<Frame caption="A VectorE/ScalarE-bound profile">
+  <img src="/images/nki/img/nki_perf_guide/fig19.png" alt="Self-attention inner loop showing VectorE/ScalarE saturation and TensorE idle" />
+</Frame>
+
+**Optimization.** Combine instructions using low-level `nki.isa` APIs. Combining instructions leverages the deeply pipelined stages within VectorE and ScalarE engine data paths to increase hardware utilization per instruction and reduce instruction count. See the [architecture guide](/nki/guides/architecture/trainium_inferentia2_arch) for operations that can be done in a pipeline fashion in a single VectorE/ScalarE instruction.
+
+Pseudo-code combining three instructions into one on ScalarE — `impl 1` and `impl 2` are functionally equivalent, but `impl 2` is 3× faster by running all three operations in a pipeline:
+
+```python
+import nki.isa as nisa
+import nki.language as nl
+
+# input: data (tile[128, 512]), scale (tile[128, 1]), bias (tile[128, 1])
+
+# impl 1:
+scaled = nl.multiply(data, scale)
+shifted = nl.add(scaled, bias)
+exp = nl.exp(shifted)
+
+# impl 2:
+exp = nisa.activation(nl.exp, data, bias, scale)
+```
+
+See the [`nki.isa` APIs](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.isa.html) for low-level ISA semantics, limitations, engine mapping, and rough performance-cost estimates.
+
+See the [Fused Mamba tutorial](/nki/guides/tutorials/fused_mamba) for a concrete example combining matrix–vector multiplication and exponential evaluation in a single `nisa.activation` instruction.
+
+#### Opt #7: TensorE only — leverage fast weight load
+
+**Symptom.** Consider a matrix multiplication between two matrices of shape `[M, K]` and `[K, N]`, with one of these conditions:
+
+1. M is significantly smaller than 128, while N is much larger than 128, or
+2. the reverse: N is significantly smaller than 128, while M is much larger than 128.
+
+In NKI, if the matrix with `min(M, N)` dimension is mapped to the **stationary tensor** (the `x` input tensor in `nl.matmul` / `nisa.nc_matmul`) for the TensorE `LoadStationary`, you'll typically under-utilize TensorE more severely than mapping that matrix to the **moving tensor**.
+
+In `neuron-profile`, identify this case by inspecting `src` access patterns for `LoadStationary` and `MultiplyMoving` instructions on TensorE.
+
+<Frame caption="Example instructions for matrix–vector multiplication">
+  <img src="/images/nki/img/nki_perf_guide/fig20-21.png" alt="Stationary tensor with 1 element/partition and moving tensor with 128 elements/partition" />
+</Frame>
+
+**Optimization.** Swap the stationary and moving tensor positions for the given matmul in NKI to leverage "Fast LoadStationary" support in TensorE.
+
+Consider a `[1, 128] × [128, 128]` matmul:
+
+<Frame caption="Illustration of matrix–vector multiplication">
+  <img src="/images/nki/img/nki_perf_guide/fig22.png" alt="1x128 times 128x128 matrix-vector multiplication" />
+</Frame>
+
+Since K=128 is the contraction dimension, it maps to the partition dimension of SBUF for both `x` and `y`. M and N map to the free dimension. We have two ways of performing this computation on TensorE — **Short Moving** and **Short Stationary** — depending on which tensor has the short free dimension.
+
+<Frame caption="Two possible TensorE instruction mappings for matrix–vector multiplication">
+  <img src="/images/nki/img/nki_perf_guide/fig23.png" alt="Short Moving vs Short Stationary mappings" />
+</Frame>
+
+By the multiplication property of transpose, `A×B = (B.T × A.T).T`. When computing `A×B`, call `nc_matmul(A.T, B)`; for `B.T × A.T`, call `nc_matmul(B.T.T, A.T) = nc_matmul(B, A.T)`. The parameters to `nc_matmul` are swapped — when we swap stationary and moving tensors, the output tensor is transposed from the original output.
+
+If there's a difference in initiation interval between `LoadStationary` and `MultiplyMoving`, one can limit TensorE throughput:
+
+<Frame caption="Two possible TensorE performance characteristics">
+  <img src="/images/nki/img/arch_images/mm_bottleneck.png" alt="Execution timeline showing LS-bound vs MM-bound cases" />
+</Frame>
+
+TensorE performance is bound by whichever instruction reads the longer tensor — `LoadStationary` in "Short Moving", `MultiplyMoving` in "Short Stationary". With TensorE Fast LoadStationary, TensorE can perform `LoadStationary` **up to 4×** faster than a `MultiplyMoving` with the same free-axis size.
+
+- **Short Moving.** `LoadStationary` initiation interval is roughly the number of elements divided by 4 (fast LoadStationary), and `MultiplyMoving` initiation interval is dominated by TensorE instruction turnaround time `MM_INIT_LATENCY (64 cycles on trn1)`. `LS_II ≈ 128/4 = 32 cycles`, `MM_II ≈ max(1, MM_INIT_LATENCY=64 cycles)` — issuing an MM roughly every 64 cycles.
+- **Short Stationary.** `MultiplyMoving` initiation interval dominates — issuing an MM roughly every 128 cycles.
+
+Prefer mapping short tensors to the moving tensor in `MultiplyMoving`. A classic example is matrix–vector product, common in auto-regressive token generation in LLMs, where most matmuls occur on a single token (vector) as the feature map while the weight tensor remains large and must be tiled.
+
+#### Opt #8: TensorE only — mitigating overhead from tensor transposes
+
+**Symptom.** TensorE accounts for over 90% of hardware FLOPS on a NeuronCore — we want it performing useful computations as much as possible in matmul-heavy kernels. The most common "not useful" computation is tensor PF-transposes, which swap the partition and free dimensions of a NKI tile.
+
+When you have a profile with TensorE visually busy, sanity-check how much TensorE activity is transposes. Select `Instruction Type` as the `Instruction Grouping` in `View Settings`:
+
+<Frame caption="Change view settings to visualize transposes">
+  <img src="/images/nki/img/nki_perf_guide/fig25.png" alt="View settings with Instruction Type grouping" />
+</Frame>
+
+TensorE instructions will be highlighted in two colors: one for Transpose and one for Regular (useful matmuls). The profile below has a noticeable chunk of TensorE time spent on transpose-induced instructions in red. Colors are chosen randomly by the profiler — hover to confirm.
+
+<Frame caption="Example timeline with a transpose instruction type">
+  <img src="/images/nki/img/nki_perf_guide/fig26.png" alt="TensorE timeline with transpose-induced and regular matmul instructions in different colors" />
+</Frame>
+
+**Optimization.** Reduce the number of transpose-induced instructions on TensorE. Tensor transposes are needed to adjust the data layout of tensors to match the partition-dimension requirements of different ISA instructions. Transposes are inserted explicitly into NKI kernels through [`nisa.nc_transpose`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.nc_transpose.html) APIs, or calling `nl.matmul` with `transpose_x=False`. These transposes most commonly lower to Tensor Engine.
+
+Two types of tensor transposes:
+
+1. **IO tensor transpose** — done on NKI kernel I/O tensors in device memory. Needed when NKI compute APIs consuming input tensors or producing output tensors expect a different layout than their I/O layout in device memory. For example, an input tensor in device memory with layout `[out_channel=128, in_channel=128]` consumed by `nisa.nc_matmul` that expects `[in_channel, out_channel]`. Options: [`nl.load`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.language.load.html) followed by a PF-transpose on TensorE, or [`nl.load_transpose2d`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.language.load_transpose2d.html) to transpose on the fly in the DMA engine — with a major caveat of much lower DMA bandwidth. IO transposes are inevitable due to the I/O tensor layout choice; minimize them with careful trade-offs.
+
+2. **Intermediate tensor transpose** — done on intermediate tensors produced within a NKI kernel. Arises due to layout-requirement mismatches between producer and consumer NKI compute APIs. Two common techniques to reduce intermediate transposes:
+   - **Swap moving/stationary tensors in `nisa.nc_matmul`** — for a `linear_layer → layernorm` chain, if we map the weight tensor to the stationary tensor and input feature map to stationary tensor, skip the PF-transpose entirely because `nisa.nc_matmul` output is in the expected layout by `nisa.bn_stats`.
+   - **Map a computation to an alternative engine with different layout requirements** — for `linear_layer → RMSnorm`, the scalar squared operator has no layout requirement and the summation can be done along either dimension (VectorE `nisa.tensor_reduce` for free-dimension summation or TensorE `nisa.nc_matmul` for partition-dimension summation). Since `RMSnorm` can use either layout, choose based on surrounding operators.
+
+## Optimizing data-movement efficiency
+
+The key goal of optimizing memory-bound kernels is to keep DMA engines running at high bandwidth utilization. If you see major DMA engine idle gaps in neuron-profile, find ways to hide compute behind DMA activities using techniques in **Opt #4**. The rest of this section focuses on improving DMA bandwidth utilization for a common symptom: computation blocked by DMA activities that are keeping the DMA engines "busy" but at low bandwidth utilization (< 60%).
+
+<Frame caption="Busy DMA engines with relatively idle compute engines">
+  <img src="/images/nki/img/nki_perf_guide/fig27.png" alt="Profile with DMA engines saturated but compute engines idle" />
+</Frame>
+
+<Note>
+  The current NKI release only supports running a kernel on a single NeuronCore (subject to changes). The optimizations below focus solely on movement between device memory and on-chip memory SBUF.
+</Note>
+
+### Opt #9: Perform sufficiently large DMA transfers
+
+**Symptom.** Visualize DMA activities per engine in `neuron-profile`:
+
+<Frame caption="Change view settings to visualize DMA transfers per DMA engine">
+  <img src="/images/nki/img/nki_perf_guide/fig28.png" alt="View settings to show DMA transfers per engine" />
+</Frame>
+
+Each DMA transfer shows as a continuous bar on the execution trace, grouped by DMA engine. The profile below shows small DMA transfers going on all 16 DMA engines — DMA engine empty gaps (due to DMA overhead) take up more time than active DMA transfers. Hovering shows a transfer size of 4 B — extremely tiny. For reference, the transfer size on Trainium/Inferentia2 should be larger than 32 KiB to achieve ideal bandwidth.
+
+<Frame caption="Example timeline with tiny DMA transfers">
+  <img src="/images/nki/img/nki_perf_guide/fig29.png" alt="DMA timeline showing tiny 4-byte transfers with significant engine idle time" />
+</Frame>
+
+For comparison, this profile has sufficiently large DMA transfers — close to 70% DMA throughput utilization:
+
+<Frame caption="Example timeline with large DMA transfers">
+  <img src="/images/nki/img/nki_perf_guide/fig30.png" alt="DMA timeline with large transfers saturating bandwidth" />
+</Frame>
+
+**Optimization.** Simple rule of thumb in NKI to trigger large DMA transfers: **maximize partition and free-dimension sizes in both [`nl.load`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.language.load.html) and [`nl.store`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.language.store.html).** The example below triggers 16 DMA transfers that run on all 16 DMA engines, each loading 8 SBUF partitions' worth of data with a transfer size of 32 KiB:
+
+```python
+import nki.language as nl
+
+def load_store_32kib_contiguous(in_tensor, out_tensor):
+    # both in_tensor and out_tensor have FP32 data type, 4B/element
+    assert in_tensor.dtype == out_tensor.dtype == nl.float32
+    # both have shape 128x1024 in device memory
+    assert in_tensor.shape == out_tensor.shape == [128, 1024]
+
+    # partition dim size is at maximum supported by the architecture: 128
+    # free dim size is at the ideal size for good bandwidth: 1024
+    # Beyond 1024 has diminishing returns on bandwidth and
+    # risks degrading compute/data-movement pipelining efficiency.
+
+    # This access pattern maps to 16 DMA transfers (1 transfer/DMA engine),
+    # with each DMA transfer moving 8 partitions worth of data:
+    # 8 partitions × 1024 elements × 4B/element = 32 KiB
+    data_tile = nl.load(in_tensor[0:128, 0:1024])
+
+    # Do some useful computation
+    ...
+
+    # Store, similar size as the load
+    nl.store(out_tensor[0:128, 0:1024], data_tile)
+```
+
+### Opt #10: Minimize use of DMA transposes
+
+**Symptom.** Excessive use of DMA transposes — invoked through `nl.load_transpose2d` — can degrade DMA bandwidth significantly. In `neuron-profile`, use search to highlight all DMA activities that perform transposes on the fly:
+
+<Frame caption="Search for DMA activities that perform transposes">
+  <img src="/images/nki/img/nki_perf_guide/fig31.png" alt="neuron-profile search highlighting DMA transpose activities" />
+</Frame>
+
+**Optimization.** See **Opt #8** for how to eliminate the need for transposes on device-memory input data. When transposes are inevitable and the kernel is memory-bound, replace `nl.load_transpose2d` with `nl.load()` + `nisa.nc_transpose()`. For an `in_tensor` of shape `[8192, 128]` where you want an SBUF tile of shape `[128, 8192]` spread across 128 partitions:
+
+```python
+# Option 1 — low DMA bandwidth usage:
+sbuf_opt1 = nl.load_transpose2d(in_tensor[0:8192, 0:128])
+
+# Option 2 — better DMA bandwidth usage, fastest transpose:
+sbuf_opt2 = nl.ndarray((128, 8192), dtype=in_tensor.dtype)
+for i_in_tile in nl.affine_range(8192 // 128):
+    i_start = i_in_tile * 128
+    current_tile = nl.load(in_tensor[i_start:i_start+128, 0:128])
+    sbuf_opt2[0:128, i_start:i_start+128] = nisa.nc_transpose(current_tile)
+```
+
+Option 2 is great when `nl.load_transpose2d` is slowing down data movement on the critical path and TensorE is otherwise idle. Occasionally Option 1 is still the right call when the amount of data to be transposed is small and the overhead of `nl.load_transpose2d` can be hidden behind other useful computation.
+
+## Related topics
+
+- [Profile a NKI kernel](/nki/guides/use-neuron-profile)
+- [Trainium/Inferentia2 architecture](/nki/guides/architecture/trainium_inferentia2_arch)
+- [Matrix multiplication tutorial](/nki/guides/tutorials/matrix_multiplication)
+- [Fused Mamba tutorial](/nki/guides/tutorials/fused_mamba)
+- [Kernel optimization tutorial](/nki/guides/tutorials/kernel-optimization)

@@ -1,0 +1,67 @@
+---
+title: "Avoid under-utilizing DMA bandwidth"
+description: "Guidelines for maximizing DMA bandwidth by using large contiguous payloads in NKI on AWS Neuron hardware."
+sidebarTitle: "DMA bandwidth guide"
+keywords: ["NKI", "DMA", "bandwidth", "payload size", "AWS Neuron", "Trainium"]
+icon: "gauge-high"
+---
+
+A common misconception is that the hardware's internal memory interleaving removes the need for large contiguous DMA payloads. In practice, small fragmented transfers underperform badly regardless of how the hardware distributes traffic across memory channels. This document clarifies why large payloads (≥ 4 KiB) are required to saturate HBM bandwidth.
+
+## How HBM channel interleaving works
+
+HBM is organized into multiple independent channels and banks. The hardware uses address interleaving to spread DMA traffic across all available channels, avoiding hot-spots where one channel becomes a bottleneck while others sit idle. This achieves higher effective channel utilization and more consistent bandwidth across diverse access patterns.
+
+However, channel interleaving only solves the *channel utilization* problem. It has no effect on the per-transfer payload size seen by the DMA engines.
+
+## Why large contiguous DMA payloads are required
+
+The fundamental problem is per-packet overhead. Each NeuronCore has 16 DMA engines, and every DMA transfer incurs descriptor setup, synchronization, and semaphore-to-start latency (~1,300 ns cross-engine). When payloads are small, the engines spend more time on overhead than on data movement, and the DMA packet rate — not HBM bandwidth — becomes the limiting factor.
+
+Channel interleaving does **not**:
+
+- Reduce the number of DMA packets required for a given transfer.
+- Remove the need for large contiguous payloads per DMA operation.
+- Eliminate DMA packets-per-second (PPS) bottlenecks caused by small transfers.
+
+Channel utilization and per-engine throughput are independent concerns. Interleaving addresses the first; payload size addresses the second.
+
+Large contiguous payloads (≥ 4 KiB per partition) amortize this fixed overhead and let each engine sustain its peak throughput:
+
+| Gen | BW / engine | Engines / NC | Aggregate BW |
+|---|---|---|---|
+| TRN1 | 17 B/ns | 16 | 272 GB/s |
+| TRN2 | 23 B/ns | 16 | 368 GB/s |
+| TRN3 | 33 B/ns | 16 | 528 GB/s |
+
+With small payloads the engines can't fill their pipelines, and achieved bandwidth drops well below these peaks regardless of how well the hardware distributes traffic across channels.
+
+## Bandwidth vs. payload size
+
+The relationship between DMA payload size and achieved bandwidth follows a saturation curve:
+
+- **< 256 B per partition** — Severely overhead-bound. Achieved bandwidth is a small fraction of peak.
+- **256 B – 2 KiB per partition** — Improving but still below peak. Per-packet overhead is a significant fraction of transfer time.
+- **≥ 2 KiB per partition** (minimum recommended) — Approaches peak bandwidth. The kernel-efficiency guide recommends at least 2 KiB of contiguous data per partition for all data types.
+- **≥ 4 KiB per partition** (target for full saturation) — Fully amortizes per-packet overhead and saturates the DMA engines.
+
+Minimum free-dimension sizes for 2 KiB per partition:
+
+| Data type | Minimum free dimension | Bytes per partition |
+|---|---|---|
+| float32 | 512 elements | 2,048 |
+| bfloat16 / float16 | 1,024 elements | 2,048 |
+| float8 | 2,048 elements | 2,048 |
+
+## Practical guidance
+
+- **Maximize the free dimension** of every DMA tile. Target ≥ 4 KiB per partition for peak throughput.
+- **Coalesce transfers.** One large DMA covering multiple logical sub-tiles is faster than many small DMAs to adjacent addresses.
+- **Don't rely on hardware channel interleaving alone** to solve bandwidth problems caused by small or fragmented transfers. Channel utilization and per-engine throughput are independent concerns.
+- **Use full partitions (P=128).** Fewer partitions means fewer engines utilized, compounding the effect of small payloads.
+
+## Related topics
+
+- [Introduction to DMA with NKI](/nki/get-started/about/nki-dma-overview)
+- [Descriptor Generation Engine (DGE) reference](/nki/deep-dives/nki-dge)
+- [NKI performance guide](/nki/deep-dives/nki_perf_guide)

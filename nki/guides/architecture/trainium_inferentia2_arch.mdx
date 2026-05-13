@@ -1,0 +1,419 @@
+---
+title: "Trainium/Inferentia2 architecture guide for NKI"
+description: "Comprehensive guide to Trainium/Inferentia2 (NeuronCore-v2) hardware architecture for NKI: compute engines, memory hierarchy, and optimization techniques for AWS Neuron SDK."
+sidebarTitle: "Trainium/Inferentia2"
+keywords: ["Trainium", "Inferentia2", "NKI", "AWS Neuron", "Hardware Architecture"]
+icon: "microchip"
+---
+
+In this guide, we dive into the hardware architecture of second-generation NeuronDevices: Trainium/Inferentia2. Our goal is to equip advanced Neuron users with sufficient architectural knowledge to write performant NKI kernels and troubleshoot performance issues on NeuronDevices using [Neuron Explorer](/nki/guides/use-neuron-profile), a profiler tool designed specifically for NeuronDevices. This guide assumes readers have read the [NKI language guide](/nki/get-started/nki-language-guide) and familiarized themselves with key NKI concepts.
+
+At a high level, both Trainium and Inferentia2 devices consist of:
+
+- 2 NeuronCores (v2).
+- 2 HBM stacks with a total device memory capacity of 32 GiB and bandwidth of 820 GB/s.
+- 32 DMA (Direct Memory Access) engines to move data within and across devices.
+- 6 CC-Cores for collective communication.
+- 2 (Inferentia2) or 4 (Trainium) NeuronLink-v2 for device-to-device collective communication.
+
+<Frame caption="Trainium/Inferentia2 device diagrams">
+  <img src="/images/nki/img/arch_images/neuron_device2.png" alt="Block diagram of a Trainium/Inferentia2 device" />
+</Frame>
+
+The rest of this guide covers each compute engine in NeuronCore-v2 and supported data-movement patterns across the memory hierarchy.
+
+## NeuronCore-v2 compute engines
+
+The figure below is a simplified diagram of the compute engines and their connectivity to the two on-chip SRAMs: State Buffer (SBUF) and Partial Sum Buffer (PSUM).
+
+<Frame caption="NeuronCore-v2 and its device memory (HBM)">
+  <img src="/images/nki/img/neuroncore_fig24.png" alt="NeuronCore-v2 compute engines and on-chip SRAM connectivity" />
+</Frame>
+
+A NeuronCore-v2 consists of four heterogeneous compute engines (Tensor, Vector, Scalar, and GpSimd), each designed to accelerate different types of operators in modern ML models. Each compute engine has its own sequencer — responsible for instruction fetch, decode, and issue. The four compute engines execute four independent instruction streams asynchronously in parallel. Explicit synchronization to satisfy data dependencies between engines is handled through atomic semaphores in hardware. In NKI, programmers don't need to program engine synchronization manually — the Neuron compiler automatically inserts the required synchronizations during compilation, based on data dependencies identified in the NKI kernel.
+
+The instruction stream within each compute engine consists of both control and data-path instructions. Control instructions are executed directly by the engine sequencer and can perform scalar operations using a set of 32-bit scalar registers private to each sequencer. Examples include register ALU operations for dynamic condition and address calculations, branching for control-flow execution, and triggering DMA transfers. Data-path instructions are executed by the specialized engine data path, which interacts with tensors in SBUF/PSUM. Data-path instructions can handle flexible addressing and shapes by referencing values stored in scalar registers.
+
+Within each NeuronCore, there's also a Sync Engine, which functions as an engine sequencer that can perform the same types of control instructions. The Sync Engine is most commonly used to trigger DMA transfers without interfering with compute-engine instruction scheduling and ordering.
+
+Engine data-path width and frequency are worth considering when optimizing performance for a multi-engine operator:
+
+| Architecture | Compute engine | Data-path width (elements/cycle) | Frequency (GHz) |
+|---|---|---|---|
+| Trainium/Inferentia2 | Tensor | 2×128 (input); 1×128 (output) | 2.8 |
+| | Vector | 128 input/output | 1.12 |
+| | Scalar | 128 input/output | 1.4 |
+| | GpSimd | 128 input/output | 1.4 |
+
+A NeuronCore-v2 consists of two software-managed on-chip SRAMs: a 24 MiB SBUF as the main data storage and a 2 MiB PSUM as a dedicated accumulation buffer for Tensor Engine. Both SBUF and PSUM are considered two-dimensional memories with 128 partitions each — one SBUF partition has 192 KiB of memory while one PSUM partition has 16 KiB. More details on data movement with SBUF/PSUM are covered later.
+
+For each compute engine, this section covers:
+
+- Key functionalities.
+- Layout and tile-size requirements for input and output tensors.
+- Best practices to achieve good performance on the engine.
+
+### Tensor Engine
+
+Tensor Engine (TensorE) is designed to accelerate matrix multiplications (matmuls), as well as other operators that can be executed using matrix multiplications such as 2D convolutions. TensorE can also be used for advanced data movement from SBUF to PSUM, including transposition and broadcast. Architecturally, the engine is built around a [systolic array](https://en.wikipedia.org/wiki/Systolic_array) with 128 rows and 128 columns of processing elements, which streams input data from SBUF and writes output to PSUM.
+
+**Data types.** TensorE supports [BF16](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format), FP16, [TF32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/), and cFP8 input matrix data types at a maximum throughput of 92 TFLOPS, as well as 23 TFLOPS for FP32 inputs. TensorE performs mixed-precision calculations, with accumulations at FP32 precision. The output data of a TensorE calculation is always in FP32.
+
+**Layout.** PSUM partition dimension is purposely rotated 90° compared to SBUF partition dimension due to systolic-array data flow.
+
+<Frame caption="Tensor Engine and SRAM connectivity">
+  <img src="/images/nki/img/arch_images/tensor_engine.png" alt="TensorE systolic array connecting SBUF (input) to PSUM (output)" />
+</Frame>
+
+TensorE must **read** input matrices from **SBUF** and **write** output matrices to **PSUM**. PSUM also allows near-memory accumulation of multiple matrix-multiplication output tiles (discussed later).
+
+In NKI, to perform a multiplication of two matrices, `x[M, K]` and `y[K, N]`, you may invoke `nki.isa.nc_matmul(x, y)` directly. The returned tile has a shape of `[M, N]` as expected. At the hardware level, TensorE requires both input tiles to have the **contraction dimension** `K` in the SBUF partition dimension — the first dimension of input shapes. This ISA requirement is reflected in [`nki.isa.nc_matmul`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.nc_matmul.html), which takes `stationary` and `moving` matrices as input parameters. `nki.isa.nc_matmul(x, y)` is a two-step computation: invoke `nki.isa.nc_transpose(x)` to get `stationary`, then `nki.isa.nc_matmul(stationary, moving)` to get the final result. `nki.isa.nc_matmul(stationary[K,M], moving[K,N])` performs a `stationary.T @ moving` calculation, resulting in an output with dimensions `[M, N]`.
+
+For every `nki.isa.nc_matmul(stationary, moving)` call, TensorE executes two distinct Neuron ISA instructions:
+
+- **LoadStationary (LS)** — loads the `stationary` tensor from SBUF and caches it in internal storage of TensorE.
+- **MultiplyMoving (MM)** — loads the `moving` tensor from SBUF and multiplies it across the pre-loaded `stationary` from the previous LoadStationary. The output is written to PSUM.
+
+The **free** axis of the **stationary** tensor always becomes the partition (first) axis of the output tile, while the **free** axis of the **moving** tensor becomes the free axis of the output.
+
+<Frame caption="MxKxN matrix multiplication visualization">
+  <img src="/images/nki/img/arch_images/matmul.png" alt="Matrix multiplication shown in both mathematical and TensorE views" />
+</Frame>
+
+Programmers are free to map `stationary` to the moving tensor instead, which leads to the same output but transposed: `nki.isa.nc_matmul(moving[K,N], stationary[K,M]) = moving.T @ stationary = outputT[N, M]`. Mapping high-level input tiles to the low-level stationary/moving tensors in TensorE is an important layout decision to minimize data transposes. Make this decision based on layout requirements imposed by the compute engine consuming the matrix-multiplication output.
+
+**Tile size.** `nki.isa.nc_matmul` enforces these constraints on input/output tile sizes:
+
+1. `stationary` tensor free-axis size (`stationary_fsize`) must never exceed 128, due to the number of PE columns in TensorE.
+2. `stationary/moving` tensor partition-axis size (`stationary_psize/moving_psize`) must never exceed 128, due to the number of PE rows and the number of SBUF partitions.
+3. `moving` tensor free-axis size (`moving_fsize`) must never exceed 512 — each `nc_matmul` can only write to a single PSUM bank, which can only hold 512 FP32 elements per PSUM partition.
+
+When shapes exceed any of these limits, tile the input matrices and invoke multiple `nki.isa.nc_matmul` calls. Exceeding `stationary_fsize` or `moving_fsize` should lead to fully independent `nki.isa.nc_matmul` with disjoint output tiles. When `K` exceeds `stationary_psize/moving_psize`, tile the input matrices in the contraction dimension and invoke multiple `nki.isa.nc_matmul` to accumulate into the *same* output buffer in PSUM. See [Tiling matrix multiplications](/nki/guides/tutorials/matrix_multiplication) for a NKI code example.
+
+#### Alternative use cases
+
+One interesting use case of TensorE is low-latency data reshape within NeuronCore, typically involving multiplying a matrix to be reshaped with a compile-time constant matrix filled with zeros and ones.
+
+For example, perform a 128×128 matrix transposition using `nki.isa.nc_matmul(transpose_input, identity)`, where `transpose_input` is the matrix to be transposed and `identity` is a 128×128 identity matrix. This is what `nki.isa.nc_transpose()` does when TensorE is chosen as the compute engine.
+
+<Frame caption="Transposition via matmul with identity">
+  <img src="/images/nki/img/arch_images/mm_transpose.png" alt="Transposition using TensorE matmul" />
+</Frame>
+
+Similarly, broadcast a vector occupying a single partition to M partitions using `nki.isa.nc_matmul(ones, broadcast_input, is_stationary_onezero=True)`, where `ones` is a 1×M vector filled with ones. NKI invokes such a matmul under the hood when `broadcast_input.broadcast_to((M, broadcast_input.shape[1]))` is called.
+
+<Frame caption="Partition broadcast">
+  <img src="/images/nki/img/arch_images/mm_broadcast.png" alt="Partition broadcast using TensorE matmul" />
+</Frame>
+
+In general, you can achieve many more complex data reshapes in TensorE — such as shuffling partitions of an SBUF tensor — by constructing appropriate zero/one patterns as one of the matmul inputs.
+
+You can also leverage TensorE for data summation across SBUF partitions (P-dim summation). For example, a vector laid out across SBUF partitions can be reduced into a single sum using TensorE. This utilizes only a single PE column of the TensorE, so depending on the surrounding operators, it may not be the best use of TensorE. If you can do summation within each partition (F-dim summation), see [`nki.isa.tensor_reduce`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.tensor_reduce.html) for a reduction implementation on Vector Engine. Choose the engine based on the natural layout of your input data to avoid transpositions.
+
+<Frame caption="Cross-partition accumulation">
+  <img src="/images/nki/img/arch_images/mm_cross_partition.png" alt="Cross-partition reduction using a single PE column" />
+</Frame>
+
+TensorE is the most performant compute engine of the NeuronCore in terms of FLOPS, so the goal is to have it execute meaningful computation at high utilization as much as possible. These "alternative use cases" stop TensorE from performing *useful* computations at *high* throughput and should generally be avoided. However, they're advisable when:
+
+- Operators don't require heavy matmuls anyway (for example, normalization, softmax).
+- Layout conflicts between producer and consumer engines make broadcast/transpose unavoidable.
+
+#### Performance considerations
+
+TensorE achieves the best throughput when running many back-to-back `nki.isa.nc_matmul` with both input matrices at the largest possible tile sizes (`stationary` 128×128, `moving` 128×512). The ideal instruction sequence is:
+
+- `LoadStationary (LS[0])` (128×128)
+- `MultiplyMoving (MM[0])` (128×512)
+- `LoadStationary (LS[1])` (128×128)
+- `MultiplyMoving (MM[1])` (128×512)
+- ...
+
+**Cost model.** TensorE is deeply pipelined — the engine can have several `LS&MM` instruction pairs in flight at a given time. Due to this pipelining, it's often *not* useful to use end-to-end execution *latency* of a single instruction when estimating instruction cost. Focus on the **initiation interval** — the number of cycles between successive instruction launches.
+
+For back-to-back `MM` instructions with BF16/FP16/TF32/cFP8 input types that reuse a single pre-loaded `stationary`, the initiation interval is roughly `max(N, MM_INIT_LATENCY)`, where `MM_INIT_LATENCY` is 64 TensorE cycles on NeuronCore-v2, and `N` is the free-axis size of `moving` (typically 512). For FP32 input data types, instruction cost is roughly 4× higher than BF16/FP16/TF32/cFP8. Whenever possible, down-cast FP32 input matrix data type to BF16/FP16/TF32/cFP8 before performing matmuls.
+
+<Frame caption="Pipelined MultiplyMoving instructions">
+  <img src="/images/nki/img/arch_images/mm_pipeline.png" alt="Two pipelined MM instructions on TensorE" />
+</Frame>
+
+**Background LoadStationary.** In typical workloads, TensorE alternates between LS and MM instructions with different input matrices. To optimize TensorE utilization, NeuronCore-v2 enables a "background LoadStationary" capability, which loads the next stationary tensor in parallel to the computation on the current stationary tensor.
+
+Depending on the relative sizes of `stationary` and `moving`, overall TensorE performance can be bounded by either `LS` or `MM` instructions.
+
+<Frame caption="Possible execution timeline with background LoadStationary">
+  <img src="/images/nki/img/arch_images/mm_bottleneck.png" alt="Execution timeline with background LoadStationary showing LS-bound vs MM-bound cases" />
+</Frame>
+
+**Fast LoadStationary.** Since `LoadStationary` is pure data movement with no computation, TensorE can perform `LoadStationary` **up to 4× faster** than a `MultiplyMoving` with the same free-axis size. Fast `LoadStationary` has an important implication: when one input matrix has a small free-axis size and the other has a large free-axis size, put the matrix with large free axis as the `stationary` matrix. For vector–matrix multiplication, put the matrix as `stationary` and the vector as `moving` for best performance.
+
+### Vector Engine
+
+Vector Engine (VectorE) is designed to accelerate vector operations where every element in the output tensor depends on multiple elements from input tensor(s) — such as vector reduction and element-wise operators between two tensors. VectorE consists of 128 parallel vector lanes, each of which can stream data from a SBUF/PSUM partition, perform mathematical operations, and write data back to each SBUF/PSUM partition in a deeply pipelined fashion.
+
+**Data types.** VectorE supports all NKI data types in both input and output tiles. Arithmetic operations are performed in FP32, with automatic zero-overhead input and output casting to and from FP32.
+
+**Layout and tile size.** VectorE instructions expect the parallel axis of input and output data to be mapped to the partition dimension. For example, for reduction-add of an N×M matrix along the M dimension, the N dimension should be mapped to the SBUF partition dimension.
+
+<Frame caption="Reduce-add on Vector Engine">
+  <img src="/images/nki/img/arch_images/vector_engine_reduce.png" alt="Vector Engine performing reduce-add across the free dimension" />
+</Frame>
+
+Most VectorE instructions limit only the input/output tile partition-dimension size (must not exceed 128), while the free-dimension size can be up to 64K elements for SBUF or 4K elements for PSUM. Exceptions like [`nki.isa.bn_stats`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.bn_stats.html) further impose that the free-dimension size can't exceed 512.
+
+#### Cross-partition data movement
+
+VectorE supports a limited set of cross-partition data movement within each group of 32 partitions. VectorE consists of four Reshape and Compute banks: each Reshape Bank connects to 32 SBUF/PSUM partitions and outputs 32 parallel streams of data; each Compute Bank can process 32 parallel data streams using 32 vector lanes. The Compute Bank can write back to 32 SBUF/PSUM partitions.
+
+<Frame caption="Vector Engine reshape and compute banks">
+  <img src="/images/nki/img/arch_images/vector_engine_cross_partition.png" alt="Vector Engine internal reshape and compute banks" />
+</Frame>
+
+The Reshape Bank supports:
+
+1. **32×32 transpose** — each Reshape Bank can read 32 elements per SBUF/PSUM partition and transpose the partition and free dimension of the incoming 32×32 matrix. Invoked via [`nki.isa.nc_transpose`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.nc_transpose.html) by selecting VectorE as the execution engine.
+2. **32-partition shuffle** — each Reshape Bank can take an arbitrary *shuffle mask* `SM` of length 32. The integer value of `SM[i]` indicates the source partition ID (modulo 32) that the Reshape Bank output stream `i` gets. Broadcast partition[0] to partition[0–31] using a SM of 32 zeros. Invoked via [`nki.isa.nc_stream_shuffle`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.nc_stream_shuffle.html).
+
+#### Performance considerations
+
+**128 parallel compute lanes.** VectorE performs computation with all 128 vector lanes in parallel, with each lane streaming data from/to one SBUF/PSUM partition. The performance cost of a VectorE instruction using all 128 lanes is the same as an instruction that uses fewer than 128 lanes.
+
+Maximize compute lanes used per VectorE instruction — that is, the partition-axis size of input/output tiles of a single `nki.isa` or `nki.language` compute API call. When partition-axis size is inevitably fewer than 128 partitions due to high-level operator definition, adopt "partition vectorization" by packing multiple "small" VectorE instructions into a single "large" Vector instruction. See [NKI performance guide](/nki/deep-dives/nki_perf_guide) for details.
+
+**Cost model.** For sufficiently large free-axis size (`N > 128`), the execution cost of a VectorE instruction is correlated to `N`:
+
+- If there's only one input tile, most VectorE instructions execute in roughly `N` cycles (for example, [`nki.isa.tensor_scalar`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.tensor_scalar.html)).
+- If there are two input tiles, the instruction executes in roughly `2N` cycles (for example, `nki.isa.tensor_tensor`).
+
+A few exceptions apply depending on data types and instruction type. See the [NKI ISA API doc](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.isa.html) for instruction-specific instruction cost details.
+
+In rare cases where VectorE runs many back-to-back instructions with `N << 128` or where every instruction depends on the output tile of the previous one, add a static instruction overhead of 100 engine cycles to the above cost estimate.
+
+### Scalar Engine
+
+Scalar Engine (ScalarE) is designed to accelerate scalar operations where every element in the output tensor only depends on one element of the input tensor. ScalarE provides hardware acceleration to evaluate non-linear functions such as GELU and Sqrt. Similar to VectorE, ScalarE consists of 128 parallel lanes.
+
+**Data types.** ScalarE supports all NKI data types in both input and output tiles. All internal computation is performed in FP32, with automatic zero-overhead input and output casting to and from FP32.
+
+**Layout and tile size.** ScalarE evaluates scalar operations (such as `nki.language.gelu`) without input/output tile layout constraints. There are additional hardware features in ScalarE that have layout constraints similar to VectorE.
+
+In terms of tile size, ScalarE instructions have the same limits as VectorE: partition-dimension size ≤ 128, free-dimension size up to 64K for SBUF or 4K for PSUM.
+
+#### Pipelined multiply-add
+
+Each ScalarE compute lane supports an additional multiply-add **before** the non-linear function (`func`) is applied in a pipeline fashion:
+
+```python
+# Case 1: scale is SBUF/PSUM vector
+# Input:  2D in_tile, 1D scale, 1D bias
+# Output: 2D out_tile
+for lane_id in range(in_tile.shape[0]):
+    for k in range(in_tile.shape[1]):
+        out_tile[lane_id][k] = func(in_tile[lane_id][k] * scale[lane_id]
+                                    + bias[lane_id])
+
+# Case 2: scale is a compile-time scalar constant in the instruction
+for lane_id in range(in_tile.shape[0]):
+    for k in range(in_tile.shape[1]):
+        out_tile[lane_id][k] = func(in_tile[lane_id][k] * scale
+                                    + bias[lane_id])
+```
+
+Invoked via [`nki.isa.activation`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.activation.html) by specifying a `scale` for multiplication and `bias` for addition. The scale can be a tile from SBUF/PSUM with one element per partition, or a compile-time constant. The bias can only be a tile from SBUF/PSUM with one element per partition. Combining a `nki.isa.tensor_scalar` instruction with non-linear function evaluation into a single instruction gives a 2× speedup vs. two separate instructions.
+
+#### Pipelined reduction
+
+Each ScalarE compute lane supports reduction **after** the non-linear function (`func`) is applied in a pipeline fashion. On NeuronCore-v2, the reduction operator can only be addition.
+
+```python
+# Input:  2D in_tile, 1D scale (similarly for scalar scale), 1D bias
+# Output: 2D out_tile, 1D reduce_res
+for lane_id in range(in_tile.shape[0]):
+    for k in range(in_tile.shape[1]):
+        out_tile[lane_id][k] = func(in_tile[lane_id][k] * scale[lane_id]
+                                    + bias[lane_id])
+        reduce_res[lane_id] += out_tile[lane_id][k]
+```
+
+Invoked via [`nki.isa.activation_reduce`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.activation_reduce.html) by specifying `reduce_op` as `nki.language.add` and `reduce_res` as the output reduction tile, passed by reference. A useful mental model: combining an `nki.isa.activation` with `nki.isa.tensor_reduce` into a single API that returns results from **both**. `nki.isa.activation_reduce` invokes two back-to-back ISA instructions: `Activate` performs the regular computation plus reduction at no additional cost (reduction result cached inside ScalarE), and `ActReadAccumulator` writes the internal reduction result back to SBUF/PSUM (roughly 64 ScalarE cycles on NeuronCore-v2).
+
+#### Performance considerations
+
+All the discussion for VectorE above applies to ScalarE, with one exception regarding instruction cost for two input tensors — ScalarE can only read up to one input tensor per instruction.
+
+**Instruction combination.** All `nki.isa.activation` instructions have the same execution cost, regardless of whether scale multiplication or bias-add is enabled. Combine multiply-add operations with non-linear function evaluation into a single ScalarE instruction if the computation allows. This is useful for ML operators that aren't TensorE-heavy (not matmul-bound) — Softmax is one such example, where you typically subtract the maximum of the input elements before evaluating the exponential function for numerical stability.
+
+### GpSimd Engine
+
+GpSimd Engine (GpSimdE) is a general-purpose engine that runs any ML operators that can't be lowered onto the other highly specialized compute engines efficiently — such as applying a triangular mask to a tensor.
+
+GpSimdE consists of eight fully programmable processors that can execute arbitrary C/C++ programs, providing the hardware support for [Neuron Custom Operator](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/neuron-customops/programming-guide/custom-c%2B%2B-operators-devguide.html). Each processor is also a 512-bit vector machine that can run high-performance vectorized kernels. Every `nki.isa` API running on GpSimdE — such as [`nki.isa.iota`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.iota.html) — uses a vectorized kernel implementation that Neuron engineers hand-tune for the underlying processor ISA.
+
+**Data types.** Each processor in GpSimd supports vectorized computation for:
+
+- 16× FP32/INT32/UINT32, or
+- 32× FP16/INT16/UINT16, or
+- 64× INT8/UINT8.
+
+Unlike ScalarE/VectorE, which can only perform arithmetic in FP32, GpSimdE programs can also access SBUF data of any supported NKI data type and perform data casting to/from FP32 at no throughput cost.
+
+**Layout and tile size.** Highly instruction-specific. See the [`nki.isa` API reference](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.isa.html).
+
+**Memory hierarchy.** On Trainium/Inferentia2, each GpSimdE processor has 64 KB of local data RAM — a tightly-coupled memory (TCM). TCM is configured with a 3-cycle access latency and 512-bit data width, often used to store intermediate computation results within a Neuron Custom Operator or GpSimdE instruction.
+
+The eight processors in GpSimdE have a high-bandwidth read/write interface to SBUF. Each processor connects to 16 SBUF partitions for both reading and writing: processor[0] connected to partition[0:15], processor[1] to partition[16:31], and so on. Each processor can programmatically send tensor read/write requests to SBUF to access data from the connected partitions. Each read can deliver up to 512-bit of data from all 16 connected partitions collectively (up to 32-bit per partition) to the processor per cycle — matching the 512-bit SIMD width.
+
+<Frame caption="Connectivity between GpSimdE and SBUF">
+  <img src="/images/nki/img/arch_images/gpsimd-sbuf-connectivity.png" alt="Eight GpSimd processors connected to SBUF partitions" />
+</Frame>
+
+#### Performance considerations
+
+**128 parallel compute lanes.** GpSimdE has 128 parallel compute lanes for 32-bit computation types across SIMD lanes of all eight processors. Invoke GpSimdE instructions that will utilize all parallel compute lanes — typically through accessing all 128 SBUF partitions for input and output. Each processor can also handle 32-wide 16-bit or 64-wide 8-bit data type computation, so GpSimdE effectively supports 256 or 512 parallel compute lanes internally.
+
+**Cost model.** Unlike VectorE/ScalarE, there's no rule-of-thumb to estimate execution cost of a GpSimdE instruction. See the [`nki.isa` API reference](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.isa.html) for instruction-specific latency estimates.
+
+## Data movement
+
+This section covers the memory subsystem and how to perform data movement between different memories efficiently. There are three main types of memory on a NeuronDevice: HBM, SBUF, and PSUM, from highest to lowest capacity.
+
+<Frame caption="Memory hierarchy">
+  <img src="/images/nki/img/arch_images/memory_hierarchy.png" alt="NeuronCore-v2 memory hierarchy with HBM, SBUF, and PSUM specifications and connectivity" />
+</Frame>
+
+Data movement between HBM and SBUF is performed using on-chip DMA engines, which can run in parallel to computation within the NeuronCore. Data movement between PSUM and SBUF is done through ISA instructions on the compute engines. Different compute engines have different connectivity to SBUF/PSUM. NeuronCore-v2 has these restrictions:
+
+1. VectorE and GpSimdE can't access SBUF in parallel.
+2. VectorE and ScalarE can't access PSUM in parallel.
+
+VectorE/GpSimdE instructions that access SBUF must be serialized, similarly for VectorE/ScalarE instructions that access PSUM. This is enforced by the Neuron compiler during NKI kernel compilation, so NKI developers don't need to program such serializations.
+
+### Data movement between HBM and SBUF using DMAs
+
+Each NeuronCore-v2 is equipped with 16 parallel DMA engines that perform data movement between any addressable memories in the system. Here we focus on using these to move data between local SBUF and HBM. Each DMA engine can process one **DMA transfer** at a time driving a peak bandwidth of 27 GiB/s, but all DMA engines can process different DMA transfers in parallel.
+
+Each DMA transfer can gather a list of source **DMA buffers** and scatter the data into another list of destination DMA buffers. Data within a DMA buffer must be contiguous in the memory address map. There's performance overhead at both DMA buffer and transfer levels, both of which can be amortized by moving a sufficiently large amount of data.
+
+HBM is logically a one-dimensional memory and occupies a flat chunk of contiguous addresses in the address map. In common cases, an HBM tensor in NKI is also contiguous in HBM address space.
+
+SBUF is a two-dimensional memory with 128 partitions. `sbuf_base_addr` is a 64-bit address dependent on which NeuronCore-v2 on the device the SBUF is located in. SBUF addresses start from the first byte of partition 0, increment along the free dimension first, and advance onto the next partition.
+
+<Frame caption="SBUF memory address space">
+  <img src="/images/nki/img/arch_images/sbuf_addr_space.png" alt="SBUF address layout starting at sbuf_base_addr" />
+</Frame>
+
+An SBUF tensor in NKI spans one or more partitions, with data starting at the same offset:
+
+<Frame caption="SBUF tensor">
+  <img src="/images/nki/img/pm-layout.png" alt="SBUF tensor layout across partitions" />
+</Frame>
+
+A data movement involving `tensor` in SBUF requires at least `tensor.shape[0]` (P-dim size) different DMA buffers, since slices of tensor data from different SBUF partitions occupy non-contiguous memory in the address space. If the tensor data slice within each SBUF partition isn't contiguous in the F dimension, more DMA buffers need to be unrolled along the F dim. These DMA buffers are typically grouped into different DMA transfers so that multiple DMA engines can participate.
+
+In NKI, moving data from HBM to SBUF and from SBUF to HBM uses [`nki.isa.dma_copy`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.dma_copy.html). The Neuron compiler converts each NKI API call to DMA transfers and assigns them to different DMA engines. For example, loading a 128×512 FP32 HBM tensor to SBUF is best done through 16 DMA transfers (one per DMA engine), each moving a scatter-gather list of 8 DMA buffers:
+
+```python
+import nki.language as nl
+tile = nl.load(in_tensor[0:128, 0:512])
+```
+
+To get good performance out of the DMAs, aim to:
+
+1. Move a large amount of contiguous data in each DMA buffer to amortize DMA buffer overhead.
+2. Move a large amount of data in each DMA transfer to amortize DMA transfer overhead.
+3. Invoke as many parallel DMA transfers on the available DMA engines as possible.
+
+These goals boil down to a quick optimization rule: **maximize both free (4 KiB or above) and partition (ideally 128) dimension sizes** when moving tensors between SBUF and HBM using `nki.language.load` and `nki.language.store`. See the [NKI performance guide](/nki/deep-dives/nki_perf_guide) for more information.
+
+### Accessing SBUF/PSUM tensors using compute engines
+
+The simplified data-flow timeline below shows how compute engines **stream** data in and out of on-chip SRAM (SBUF or PSUM). Compute engines can pipeline data reads, computation, and writes along the F dimension of the src/dst tensors. Each cycle, each engine can read 128 elements across 128 SBUF/PSUM partitions, perform a computation on previously read 128 elements, and write 128 previously computed results to SBUF/PSUM. The P axis of a tensor is the *parallel* dimension for SBUF/PSUM data accessing, while the F axis is the *time* dimension.
+
+<Frame caption="Data streaming between SBUF and compute engine">
+  <img src="/images/nki/img/arch_images/data_streaming.png" alt="Pipelined data read, compute, and write across SBUF partitions and F dimension" />
+</Frame>
+
+When accessing SBUF/PSUM tensors, follow different rules in the P and F dimensions. Hardware doesn't allow P-dimension striding when accessing data from a single SBUF/PSUM tensor — a valid src/dst tensor must occupy a contiguous number of partitions. The hardware further enforces which partition a tensor can start from (`start_partition`) based on the number of partitions it occupies (`num_partition`):
+
+- If `64 < num_partition <= 128`, `start_partition` must be 0.
+- If `32 < num_partition <= 64`, `start_partition` must be 0 or 64.
+- If `0 < num_partition <= 32`, `start_partition` must be one of 0, 32, 64, or 96.
+
+Data access along the free dimension is more flexible: the src/dst tensor can support up to four-dimensional tensorized access patterns with a stride in each dimension within each partition. Each F axis in the tensor can have a size expressed in `uint16` and a stride in `int16`, measured in data elements. For example, if the tensor data type is BF16 and the stride of the most-minor F dimension is 10, we stride across 20 B within a partition at a time. See [Tensor indexing on NKI](/nki/get-started/about/indexing-overview) to learn how to index SBUF/PSUM tensors to achieve F-dimension striding.
+
+When accessing an SBUF/PSUM tensor, all active partitions must follow the same F-dimension access pattern. At every time step, the engine read/write interface accesses data elements at the same *offset* within each active partition.
+
+#### Cross-partition connectivity
+
+Most VectorE/ScalarE/GpSimdE instructions on NeuronCore-v2 require `src_tensor` and `dst_tensor` to occupy the same number of partitions. When the number of partitions involved exceeds 64, `start_partition` must be 0 for both, so you effectively can't perform cross-partition data movement — each partition of `src_tensor` flows into the corresponding partition in `dst_tensor`.
+
+When `num_partition < 64`, VectorE/ScalarE/GpSimdE on NeuronCore-v2 supports two styles of cross-partition SBUF/PSUM data movement: (1) cross-half movement for `32 < num_partition <= 64` and (2) cross-quadrant movement for `0 < num_partition <= 32`. Each partition in `src_tensor` still has a one-to-one mapping to each partition in `dst_tensor`.
+
+<Frame caption="Cross-partition connectivity">
+  <img src="/images/nki/img/arch_images/cross_quadrant.png" alt="Cross-half and cross-quadrant partition movement patterns" />
+</Frame>
+
+#### Performance considerations
+
+**Access pattern.** Use as many partitions as possible when accessing SBUF/PSUM tensors to saturate the available data streaming bandwidth. Accessing with a large stride in the most-minor F dimension incurs a performance penalty. When the most-minor F stride is less than 16 bytes, SBUF/PSUM on NeuronCore-v2 can supply peak bandwidth of 128 elements/cycle at 1.4 GHz for each tensor read/write interface. A 16-byte stride is 4 elements for 32-bit data types, 8 elements for 16-bit, or 16 elements for 8-bit. If the most-minor F stride exceeds 16 bytes, achievable bandwidth drops to half of peak — roughly 50% performance hit on the instructions.
+
+**Concurrent SBUF/PSUM accesses by engines.** Despite the serialization restrictions above, SBUF can drive peak bandwidth in each tensor read/write interface connected to VectorE/ScalarE/TensorE or GpSimdE/ScalarE/TensorE *simultaneously* without bandwidth interference. Similarly, PSUM can drive peak bandwidth for VectorE/TensorE or ScalarE/TensorE *simultaneously*.
+
+**Tensor access overhead.** Initiating a tensor access request from an engine to its SBUF/PSUM read/write interface incurs a static overhead of approximately 60 cycles on NeuronCore-v2. Compute engines can typically hide some of this latency through instruction-level parallelism, but access tensors with large P and F sizes when possible to amortize this overhead.
+
+### Near-memory accumulation in PSUM
+
+Both VectorE and ScalarE have read/write access to PSUM, while TensorE only has write access. PSUM is designed as a landing buffer for TensorE with near-memory accumulation capabilities that allow read-accumulate-write to every 4 B element in memory. This accumulation mechanism can *only* be controlled by TensorE — VectorE and ScalarE access PSUM like a regular SRAM similar to SBUF.
+
+PSUM is organized into 128 partitions, each consisting of 16 KB of memory. Each partition is further divided into 8 PSUM banks, with each bank holding up to 512 32-bit values. The output tile of a TensorE matrix multiplication (`nki.isa.nc_matmul`) must **fit** into one PSUM bank per partition — the fundamental reason for the free-dimension size limitation for the `moving` tensor. Every `nc_matmul` instruction can choose whether to *override* existing bank data with instruction output or *accumulate* instruction output into existing bank data element-wise.
+
+The accumulation mode is useful when the high-level matmul has a contraction dimension greater than 128. Assume:
+
+- `x.shape = [128, 256]`
+- `y.shape = [256, 512]`
+
+Mathematically, slice `x` and `y` in the contraction dimension to get `[x0, x1]` and `[y0, y1]` input tiles. To get the final output result:
+
+- `output0 = matmul(x0, y0)`
+- `output1 = matmul(x1, y1)`
+- `output  = output0 + output1`
+
+<Frame caption="Matmul tiling (mathematical view)">
+  <img src="/images/nki/img/arch_images/mm_tiling.png" alt="Tiling the contraction dimension of a matrix multiplication" />
+</Frame>
+
+PSUM accumulation combines steps 2 and 3 into a single TensorE `nki.isa.nc_matmul` instruction. With `x` in the transposed layout in SBUF, the tiled matmul example has two back-to-back `nki.isa.nc_matmul` instructions on TensorE:
+
+<Frame caption="Matmul tiling (hardware view)">
+  <img src="/images/nki/img/arch_images/mm_tiling_hw.png" alt="Two back-to-back nc_matmul instructions accumulating into the same PSUM bank" />
+</Frame>
+
+The first `nki.isa.nc_matmul` instruction overwrites the destination PSUM bank with the instruction output. The second accumulates the instruction output onto the previous instruction's result in the same PSUM. PSUM accumulation is always done in FP32. A series of TensorE matmul instructions with the first one writing to a PSUM bank and subsequent instructions accumulating into the same bank is called a *matmul accumulation group*.
+
+`nisa.nc_matmul` supports an `accumulate` parameter to control PSUM accumulation behavior. When not specified (default), the compiler auto-detects: the first write to a PSUM bank overwrites, and subsequent writes accumulate.
+
+```python
+# condition 1: a psum buffer with zeros
+psum_buf = nl.zeros((128, 128), dtype=nl.float32, buffer=nl.psum)
+
+# condition 2: an affine range loop
+for i in nl.affine_range(N):
+    # condition 3: add matmul results from TensorEngine
+    nisa.nc_matmul(dst=psum_buf, stationary=stationary_tile, moving=moving_tile)
+```
+
+See the [matrix multiplication tutorial](/nki/guides/tutorials/matrix_multiplication) for a detailed implementation.
+
+<Note>
+  When `accumulate` isn't specified (default), `nisa.nc_matmul` auto-detects accumulation: the first write to a PSUM location overwrites, and subsequent writes accumulate. Accumulation can also be controlled explicitly with `accumulate=True` or `accumulate=False`.
+</Note>
+
+With 8 PSUM banks per partition, TensorE can have up to eight outstanding matmul accumulation groups, which allows flexible scheduling of matmul instructions on TensorE. The extra buffering from multiple PSUM banks also enables pipelining TensorE computation with other compute engines — TensorE can move onto the next accumulation group without waiting for VectorE/ScalarE to evict previous accumulation group results.
+
+## Related topics
+
+- [Trainium2 architecture](/nki/guides/architecture/trainium2_arch)
+- [Trainium3 architecture](/nki/guides/architecture/trainium3_arch)
+- [Memory hierarchy overview](/nki/get-started/about/memory-hierarchy-overview)
+- [Matrix multiplication tutorial](/nki/guides/tutorials/matrix_multiplication)
+- [NKI performance guide](/nki/deep-dives/nki_perf_guide)

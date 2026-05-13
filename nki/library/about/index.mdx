@@ -1,0 +1,31 @@
+---
+title: "About the NKI Library"
+description: "Overview of the NKI Library — pre-built NKI kernels that accelerate ML workloads on AWS Neuron devices."
+sidebarTitle: "About"
+icon: "circle-info"
+---
+
+Learn about the NKI Library and the pre-built kernels it provides to accelerate the performance of your models.
+
+## What is the NKI Library?
+
+The NKI Library is a collection of pre-built NKI kernels optimized for AWS Neuron-powered devices. These kernels are designed to accelerate machine-learning workloads by providing efficient implementations of common operations used in deep learning models. NKI kernels are commonly used to implement custom PyTorch operators that run on NeuronCores, enabling developers to optimize performance-critical operations beyond what the Neuron Compiler generates automatically.
+
+## How do I use the NKI Library?
+
+The kernels in the NKI Library are provided in a public GitHub repository that you can clone and integrate into your Neuron-based model development workflow. You can use these kernels directly in your models to take advantage of their optimized performance on Neuron hardware.
+
+<Card
+  title="NKI Library on GitHub"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-library"
+  horizontal
+>
+  Clone or fork the repo and follow the README to get started.
+</Card>
+
+## Resources
+
+- [NKI Library kernel API reference](/nki/library/api)
+- [NKI Library kernel design specifications](/nki/library/specs)
+- [NKI documentation](/nki)

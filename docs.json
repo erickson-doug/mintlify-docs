@@ -1,32 +1,127 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "AWS Neuron Documentation",
   "colors": {
     "primary": "#16A34A",
     "light": "#07C983",
     "dark": "#15803D"
   },
   "favicon": "/favicon.svg",
-  "navigation": {
+    "navigation": {
     "tabs": [
       {
         "tab": "Guides",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "NKI",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "nki/index",
+              "nki/nki_faq",
+              {
+                "group": "Get started",
+                "pages": [
+                  "nki/get-started/index",
+                  "nki/get-started/setup-env",
+                  "nki/get-started/quickstart-implement-run-kernel",
+                  "nki/get-started/nki-language-guide",
+                  {
+                    "group": "Concepts",
+                    "pages": [
+                      "nki/get-started/about/index",
+                      "nki/get-started/about/memory-hierarchy-overview",
+                      "nki/get-started/about/data-representation-overview",
+                      "nki/get-started/about/indexing-overview",
+                      "nki/get-started/about/tiling-overview",
+                      "nki/get-started/about/nki-dma-overview",
+                      "nki/get-started/about/lnc"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Guides",
+                "pages": [
+                  "nki/guides/index",
+                  {
+                    "group": "Tutorials",
+                    "pages": [
+                      "nki/guides/tutorials/index",
+                      "nki/guides/tutorials/matrix_multiplication",
+                      "nki/guides/tutorials/transpose2d",
+                      "nki/guides/tutorials/average_pool2d",
+                      "nki/guides/tutorials/fused_mamba",
+                      "nki/guides/tutorials/kernel-optimization"
+                    ]
+                  },
+                  {
+                    "group": "Architecture",
+                    "pages": [
+                      "nki/guides/architecture/index",
+                      "nki/guides/architecture/trainium_inferentia2_arch",
+                      "nki/guides/architecture/trainium2_arch",
+                      "nki/guides/architecture/trainium3_arch"
+                    ]
+                  },
+                  "nki/guides/framework_custom_op",
+                  "nki/guides/how-to-scheduling-apis",
+                  "nki/guides/nki_simulator",
+                  "nki/guides/use-neuron-profile"
+                ]
+              },
+              {
+                "group": "Deep dives",
+                "pages": [
+                  "nki/deep-dives/index",
+                  "nki/deep-dives/nki-compiler",
+                  "nki/deep-dives/nki-dma-bandwidth-guide",
+                  "nki/deep-dives/nki-dynamic-loops",
+                  "nki/deep-dives/nki-dge",
+                  "nki/deep-dives/nki-aps",
+                  "nki/deep-dives/mxfp-matmul",
+                  "nki/deep-dives/nki_perf_guide"
+                ]
+              },
+              {
+                "group": "NKI Library",
+                "pages": [
+                  "nki/library/index",
+                  "nki/library/about/index",
+                  {
+                    "group": "Kernel utilities",
+                    "pages": [
+                      "nki/library/kernel-utils/index",
+                      "nki/library/kernel-utils/allocator",
+                      "nki/library/kernel-utils/stream-shuffle-broadcast",
+                      "nki/library/kernel-utils/tensor-view",
+                      "nki/library/kernel-utils/tiled-range"
+                    ]
+                  },
+                  {
+                    "group": "Kernel specs",
+                    "pages": [
+                      "nki/library/specs/index",
+                      "nki/library/specs/design-rmsnorm-quant"
+                    ]
+                  },
+                  "nki/library/api/index"
+                ]
+              },
+              {
+                "group": "Migration guides",
+                "pages": [
+                  "nki/migration/index",
+                  "nki/migration/nki-beta2-migration-guide",
+                  "nki/migration/nki-0-3-0-update-guide",
+                  "nki/migration/nki_block_dimension_migration_guide"
+                ]
+              },
+              "nki/api/index"
             ]
           },
           {
             "group": "Customization",
-            "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
+            "pages": ["essentials/settings", "essentials/navigation"]
           },
           {
             "group": "Writing content",
@@ -56,9 +151,7 @@
         "groups": [
           {
             "group": "API documentation",
-            "pages": [
-              "api-reference/introduction"
-            ]
+            "pages": ["api-reference/introduction"]
           },
           {
             "group": "Endpoint examples",
@@ -74,16 +167,8 @@
     ],
     "global": {
       "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
+        { "anchor": "Documentation", "href": "https://mintlify.com/docs", "icon": "book-open-cover" },
+        { "anchor": "Blog", "href": "https://mintlify.com/blog", "icon": "newspaper" }
       ]
     }
   },

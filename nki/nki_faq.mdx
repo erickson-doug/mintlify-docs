@@ -1,0 +1,75 @@
+---
+title: "NKI FAQ"
+description: "Frequently asked questions about the Neuron Kernel Interface (NKI): when to use it, supported hardware and frameworks, debugging, backwards compatibility, and where to find sample kernels."
+sidebarTitle: "FAQ"
+icon: "circle-question"
+---
+
+## When should I use NKI?
+
+NKI lets you write custom operators that program directly against the Neuron ISA. There are two common reasons to use NKI:
+
+- **Performance optimization.** When the Neuron Compiler's general-purpose optimizations don't fully exploit the hardware for your specific workload, NKI lets you write hand-tuned operators that maximize compute and memory throughput. For example, the NKI Library provides optimized kernels for attention, MLP, RMSNorm with quantization, and collective communication that outperform compiler-generated equivalents.
+- **Novel operators and architectures.** NKI lets you implement operators that aren't yet supported by the Neuron Compiler, which means you can self-serve new deep learning architectures and custom operations without waiting for compiler support.
+
+## Which AWS chips does NKI support?
+
+NKI supports Trainium2 and Trainium3 chips, available on the Trn2 and Trn3 instance families.
+
+## Which compute engines are supported?
+
+The following AWS Trainium and Inferentia compute engines are supported: Tensor Engine, Vector Engine, Scalar Engine, and GpSimd Engine.
+
+For more details, see the [NeuronDevice architecture guide](/nki/guides/architecture) and refer to the [`nki.isa`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.isa.html) APIs to identify which engines are utilized for each instruction.
+
+## How do I launch a NKI kernel onto a logical NeuronCore with Trainium2 or Trainium3?
+
+A logical NeuronCore (LNC) can consist of multiple physical NeuronCores. In the current Neuron release, an LNC on Trainium2 or Trainium3 can have up to two physical NeuronCores.
+
+For more details on NeuronCore configurations, see [Logical NeuronCore configurations](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/arch/neuron-features/logical-neuroncore-config.html#logical-neuroncore-config).
+
+In NKI, you can launch a NKI kernel onto multiple physical NeuronCores within a logical NeuronCore using `kernel[2]` to set LNC=2. Each core receives a different `nl.program_id(0)` value (0 or 1).
+
+## What ML frameworks support NKI kernels?
+
+NKI is integrated with the PyTorch and JAX framework custom-op mechanisms. For more details, see the NKI framework custom-op guides in the [NKI guides](/nki/guides).
+
+## What Neuron software does not currently support NKI?
+
+NKI does not currently support integration with Neuron Custom C++ Operators, Transformers NeuronX, and Neuron Collective Communication.
+
+## Where can I find NKI sample kernels?
+
+NKI provides two open-source repositories with kernel examples:
+
+- [**NKI Library**](https://github.com/aws-neuron/nki-library) — Production-ready, optimized kernels for common operations (matrix multiplication, attention, normalization, quantization, and more) that you can use directly in your models. See the [NKI Library documentation](/nki/library) for API reference and design specifications.
+- [**NKI Samples**](https://github.com/aws-neuron/nki-samples) — Reference and tutorial kernels that demonstrate NKI programming patterns and concepts. These are designed for learning and experimentation rather than production use.
+
+For step-by-step guides on writing NKI kernels, see the [NKI tutorials](/nki/guides/tutorials).
+
+## What should I do if I have trouble resolving a kernel compilation error?
+
+Refer to the [NKI sample GitHub issues](https://github.com/aws-neuron/nki-samples/issues) for guidance on resolving common NKI compilation errors. If you encounter a compilation error from Neuron Compiler that you cannot understand or resolve, check the [GitHub issues](https://github.com/aws-neuron/nki-samples/issues) and open a new issue if no similar one exists.
+
+## How can I debug numerical issues in NKI kernels?
+
+We encourage NKI programmers to build kernels incrementally and verify the output of small operators one at a time. NKI also provides a CPU simulation mode that supports printing kernel intermediate tensor values to the console. See [`nki.simulate`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.simulate.html) for a code example.
+
+## How can I optimize my NKI kernel?
+
+See the [NKI performance guide](/nki/deep-dives/nki_perf_guide) to learn how to optimize NKI kernels.
+
+## Does NKI support the entire Neuron instruction set?
+
+Neuron will iteratively add support for the Neuron instruction set by adding more [`nki.isa`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.isa.html) APIs in upcoming Neuron releases.
+
+## Will NKI APIs guarantee backwards compatibility?
+
+The [NKI APIs](/nki/api) follow the Neuron Software Maintenance policy for Neuron APIs. For more information, see the [SDK maintenance policy](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/sdk-policy.html).
+
+## Related topics
+
+- [Neuron Kernel Interface (NKI)](/nki)
+- [Get started with NKI](/nki/get-started)
+- [NKI Library](/nki/library)
+- [NKI API Reference Manual](/nki/api)

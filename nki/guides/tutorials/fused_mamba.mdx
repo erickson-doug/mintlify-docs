@@ -1,0 +1,668 @@
+---
+title: "Fused Mamba"
+description: "Build and optimize a NKI kernel for the Mamba State Space Model, iterating on layout, loop ordering, and sequence-length tiling to scale efficiently on a NeuronCore."
+sidebarTitle: "Fused Mamba"
+keywords: ["Mamba", "SSM", "NKI", "Neuron", "Associative scan", "Tiling", "VectorE"]
+icon: "bolt"
+---
+
+In this tutorial we implement a NKI kernel for the [Mamba Large Language Model](https://arxiv.org/abs/2312.00752), a State Space Model (SSM) that replaces the attention block of a regular Transformer with a custom layer inspired by recurrent neural networks. We walk through the core computation step by step and map it to NKI APIs to form a functional kernel. Then, by scaling the input shapes (both channel size and sequence length), we iterate on a more hardware-efficient implementation to improve the scaling efficiency.
+
+In this tutorial we learn about:
+
+- Mapping different vector operations efficiently to NeuronCore compute engines, such as associative scan and element-wise operations between tensors
+- Leveraging data reuse and tiling to reduce excessive data movement and keep compute engines busy
+- Using [neuron-profile](/nki/guides/use-neuron-profile) to identify performance bottlenecks and opportunities
+
+## PyTorch reference implementation
+
+Before jumping to NKI, examine the compute definition of a Mamba-v1 layer in the PyTorch script (`mamba_torch.py`):
+
+<Card
+  title="mamba_torch.py"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/fused_mamba/mamba_torch.py"
+  horizontal
+>
+  PyTorch reference implementation of the Mamba layer (`NKI_EXAMPLE_24`).
+</Card>
+
+The input tensor shapes are:
+
+- `delta: [batch, channels, seq_len]`
+- `u: [batch, channels, seq_len]`
+- `A: [channels, state_size]`
+- `B: [batch, state_size, seq_len]`
+- `C: [batch, state_size, seq_len]`
+
+The key model parameters are:
+
+- `batch` — batch size of the model.
+- `seq_len` — sequence length of the model.
+- `channels` — hidden size of a token.
+- `state_size` — number of model states.
+
+We use `[batch=1, seq_len=512, channels=256, state_size=16]` as a simple test case for initial performance evaluation.
+
+Running the PyTorch script compiles the compute graph with the Neuron Compiler and generates a Neuron executable file (NEFF) in the same directory. We can then profile the NEFF on a single NeuronCore using [neuron-profile](/nki/guides/use-neuron-profile). The figure below shows the profile. The initial PyTorch implementation takes **151.83 ms** to execute on device.
+
+<Frame caption="Profile of Mamba PyTorch implementation">
+  <img src="/images/nki/img/mamba_torch_ref.png" alt="Profile of the Mamba PyTorch reference implementation" />
+</Frame>
+
+Zooming into a portion of the profile, we notice the compute activities on different engines (TensorE, VectorE, ScalarE, GpSimdE) are sparse compared to data-movement activities (the `qSyncIO0` and `qVectorSpillReload` rows):
+
+<Frame caption="Profile of Mamba PyTorch implementation (zoomed in)">
+  <img src="/images/nki/img/mamba_torch_ref_zoomed.png" alt="Zoomed-in profile showing sparse compute activity" />
+</Frame>
+
+In this seemingly memory-bound execution trace, the achieved DMA throughput is also extremely low — hovering around 0.33% utilization throughout execution. We are stressing neither the compute nor the memory subsystem, which hints that the workload is running at low efficiency on the NeuronCore. The rest of this tutorial shows how to rewrite the computation in NKI to reach **172.93 µs** on device — an **878× speedup** over the PyTorch reference.
+
+## Mapping the Mamba layer to the NeuronCore
+
+This section walks through how the computation maps onto the NeuronCore architecture. We also highlight the importance of choosing appropriate data layouts for good compute efficiency.
+
+We have the following input tensor shapes in device memory:
+
+- `delta: [batch_size, channels, seq_len]`
+- `u: [batch_size, channels, seq_len]`
+- `A: [channels, state_size]`
+- `B: [batch_size, state_size, seq_len]`
+- `C: [batch_size, state_size, seq_len]`
+
+These layouts were chosen carefully based on the computation done on the NeuronCore, which we discuss in detail below.
+
+In Mamba models, both `seq_len` and `channels` are typically in the thousands (for example, `seq_len=16K, channels=4K`), while `batch_size` and `state_size` are 2–3 orders of magnitude smaller (for example, `batch_size=4, state_size=16`). To simplify the visualization, hold `batch` and `state_size` constant and focus on computation per batch per state. `batch_size` is a fully parallel axis in a Mamba layer; `state_size` is only a partial parallel axis where results from different states will be accumulated together.
+
+By extracting the `batch` and `state_size` dimensions we get the following per-(batch, state) input tensor shapes in device memory:
+
+- `delta_i: [channels, seq_len]`
+- `u_i:     [channels, seq_len]`
+- `A_i:     [channels]`
+- `B_i:     [seq_len]`
+- `C_i:     [seq_len]`
+
+Now visualize the data flow and computation using 2D matrices or vectors step by step.
+
+### Step 1: Element-wise multiplication of `delta_i` and `A_i`
+
+PyTorch reference code for Step 1:
+
+```python
+# delta[batch, channels, seq_len]
+# A    [channels, state_size]
+delta[:, :, None, :] * A[None, :, :, None]
+
+# Holding batch and state_size constant
+# delta_i: [channels, seq_len]
+# A_i:     [channels]
+delta_i[:, :] * A_i[:]
+```
+
+After this transformation, the multiplication between `delta_i` and `A_i` involves a **broadcast** across the `seq_len` dimension of `delta_i`. In NKI, a free-dimension broadcast can often be folded into the actual computation instruction at no additional performance cost, while a partition-dimension broadcast often requires a separate instruction on TensorE (see the TensorE alternative use case in the [Trainium/Inferentia2 architecture guide](/nki/guides/architecture/trainium_inferentia2_arch)). As a result we have two options for executing Step 1.
+
+**Option 1: map `seq_len` to the free dimension.** Element-wise multiplication of `delta_i` and `A_i` on the NeuronCore can be done through [`nisa.tensor_scalar`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.tensor_scalar.html) on either VectorE or ScalarE, which automatically broadcasts `A_i` along the free dimension to match the `seq_len` dimension in `A_i`.
+
+The `channels` dimension is mapped to the SBUF partition dimension. Since the input `channels` dimension has a size of 256 in our initial setup — which exceeds the architectural limit of `nl.tile_size.pmax=128` — we must **tile** `delta_i` along the `channels` dimension (denoted `channels_tiled`) and feed one tile into `nisa.tensor_scalar` at a time. The figure below illustrates the computation for Option 1.
+
+<Frame caption="Step 1, Option 1: `nisa.tensor_scalar`">
+  <img src="/images/nki/img/mamba_step1_opt1.png" alt="Step 1 Option 1 using nisa.tensor_scalar" />
+</Frame>
+
+As an example, the NKI code for batch `i_batch`, state `i_state`, and channel tile `i_tile_channels` is:
+
+```python
+# Input shape in device memory matches the computation layout
+# Device memory layout:
+# delta_i: [channels, seq_len]
+# A_i:     [channels]
+
+# Computation layout in SBUF:
+# delta_i: [par_dim(channels), seq_len]
+# A_i:     [par_dim(channels)]
+
+deltaA_i = nisa.tensor_scalar(delta_i, op0=nl.multiply, operand0=A_i)
+```
+
+With this compute-layout option, the `delta_i` tensor shape `[channels, seq_len]` in device memory can be loaded into SBUF efficiently with `seq_len` as the free dimension and fed into VectorE/ScalarE for computation. No extra transposes are needed.
+
+**Option 2: map `seq_len` to the partition dimension.** Alternatively, if we choose a transposed layout for `delta_i` in SBUF, we need a partition-dimension broadcast of `A_i` using a separate instruction on TensorE (`A_i.broadcast_to(...)`) and then a [`nisa.tensor_tensor`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.tensor_tensor.html) operation between `delta_i` and the broadcast `A_i` on VectorE. We still need to tile the `seq_len` dimension to meet the tile-size constraint `nl.tile_size.pmax=128`. The figure below illustrates this option.
+
+<Frame caption="Step 1, Option 2: p-dim broadcast + `nisa.tensor_tensor`">
+  <img src="/images/nki/img/mamba_step1_opt2.png" alt="Step 1 Option 2 partition-dim broadcast with nisa.tensor_tensor" />
+</Frame>
+
+The associated NKI code:
+
+```python
+# Input shape in device memory does NOT match the computation layout
+# Device memory layout:
+# delta_i: [channels, seq_len]
+# A_i:     [channels]
+
+# Computation layout in SBUF:
+# delta_i: [par_dim(seq_len_tiled), channels]
+# A_i:     [par_dim(1), channels]
+
+A_i_bcast = A_i.broadcast_to((nl.tile_size.pmax, channels))
+deltaA_i = nisa.tensor_tensor(delta_i, A_i_bcast, op=ml.multiply)
+```
+
+Assuming the same `delta_i` device-memory layout `[channels, seq_len]`, before performing the `nisa.tensor_tensor` instruction we must either:
+
+- Do a regular load of `delta_i` into SBUF using [`nl.load`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.language.load.html) followed by an explicit transpose with `nl.transpose` to put `seq_len` on the free dimension, or
+- Do a transposed load of `delta_i` using [`nl.load_transpose2d`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.language.load_transpose2d.html), which is significantly less efficient in memory bandwidth compared with `nl.load`.
+
+If Option 2 were chosen as the compute layout, we would also want to redefine the `delta` input tensor shape as `[seq_len, channels]` in device memory.
+
+From a compute perspective, Option 2 is less efficient than Option 1 because:
+
+1. Option 2 needs an extra TensorE instruction performing partition-dimension broadcast.
+2. `nisa.tensor_tensor` is 2× slower than `nisa.tensor_scalar` for our FP32 input data type (see API doc for instruction-cost estimates).
+
+For Step 1 alone, Option 1 is the winner. Let's continue with the remaining steps and see if we need to revise this selection due to surrounding operator-layout preferences.
+
+### Step 2: Exponential of `deltaA_i`
+
+Step 2 evaluates the exponential on `deltaA_i`:
+
+```python
+torch.exp(...)
+```
+
+On the NeuronCore, evaluating an exponential on a tensor is a scalar operation that runs on ScalarE. It can be invoked through [`nl.exp`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.language.exp.html) or [`nisa.activation`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.activation.html). ScalarE can also perform a pipelined multiply-add on the input before evaluating the non-linear function (see the [Trainium/Inferentia2 architecture guide](/nki/guides/architecture/trainium_inferentia2_arch) for detail). In other words, we can fold Step 1 (Option 1) `nisa.tensor_scalar` and Step 2 into a single ScalarE instruction at no additional cost. This is only exposed through `nisa.activation`. The folding is not feasible if we chose Option 2 `nisa.tensor_tensor` in Step 1. The figure below shows the new plan that combines Step 1 and Step 2 into `nisa.activation`:
+
+<Frame caption="Step 1 & 2: `nisa.activation`">
+  <img src="/images/nki/img/mamba_step2.png" alt="Steps 1 and 2 folded into a single nisa.activation" />
+</Frame>
+
+The associated NKI code:
+
+```python
+# Input shape in device memory matches the computation layout
+deltaA_i = nisa.activation(op=nl.exp, data=delta_i, scale=A_i)
+```
+
+### Step 3: Element-wise multiplication of `delta_i`, `B_i`, and `u_i`
+
+PyTorch reference code:
+
+```python
+# delta[batch, channels, seq_len]
+# B:   [batch, state_size, seq_len]
+# u:   [batch, channels, seq_len]
+delta[:, :, None, :] * B[:, None, :, :] * u[:, :, None, :]
+
+# Holding batch and state_size constant
+# delta_i: [channels, seq_len]
+# B_i:     [seq_len]
+# u_i:     [channels, seq_len]
+delta_i[:, :] * B_i[None, :] * u_i[:, :]
+```
+
+This step involves similar compute-layout and instruction choices as Step 1:
+
+- `channels` is either the partition or the free dimension for both `delta_i` and `u_i`.
+- Multiplication with `B_i` is either through `nisa.tensor_tensor` or `nisa.tensor_scalar`.
+
+Since we preferred Step 1 to consume `delta_i` with `channels` as the partition dimension, it is wise to follow the same layout here for `delta_i` to avoid transposes. That makes the multiplication with `B_i` a `nisa.tensor_tensor`. The figure below visualizes Step 3:
+
+<Frame caption="Step 3: p-dim broadcast + 2× `nisa.tensor_tensor`">
+  <img src="/images/nki/img/mamba_step3.png" alt="Step 3 using partition-dim broadcast and two tensor_tensor calls" />
+</Frame>
+
+The associated NKI code:
+
+```python
+# Input shape in device memory does NOT match the computation layout
+# Device memory layout:
+# delta_i: [channels, seq_len]
+# u_i:     [channels, seq_len]
+# B_i:     [seq_len]
+
+# Computation layout in SBUF:
+# delta_i: [par_dim(channels_tiled), seq_len]
+# u_i:     [par_dim(channels_tiled), seq_len]
+# B_i:     [par_dim(1), seq_len]
+
+deltaU_i = nisa.tensor_tensor(delta_i, u_i, op=ml.multiply)
+B_i_bcast = B_i.broadcast_to((nl.tile_size.pmax, seq_len))
+deltaBu_i = nisa.tensor_tensor(deltaU_i, B_i_bcast, op=ml.multiply)
+```
+
+### Step 4: Associative scan between `deltaA_i` and `deltaBu_i`
+
+In this step we use an associative-scan operator between `deltaA` and `deltaBu` to aggregate information across time (sequence length) sequentially, from the past to the present. A PyTorch reference implementation:
+
+```python
+# deltaA:   [batch_size, channels, state_size, seq_len]
+# deltaB_u: [batch_size, channels, state_size, seq_len]
+out = torch.empty(batch_size, channels, state_size, seq_len,
+                  device=deltaA.device, dtype=deltaA.dtype)
+
+for i in range(seq_len):
+    # starting state is 0
+    prev_state = out[..., i - 1] if i > 0 else 0
+    # multiply deltaA by the previous time step state and then add deltaB_u
+    out[..., i] = deltaA[..., i] * prev_state + deltaB_u[..., i]
+```
+
+Holding batch and `state_size` constant, `deltaA_i` and `deltaBu_i` both have shape `[channels_tiled, seq_len]`, where `channels_tiled` is the partition dimension. The associative scan can be implemented naively in NKI through the following loop:
+
+```python
+scan_i = nl.ndarray((channels_tiled, seq_len), ...)
+
+# Peeling the first iteration out, which is
+# equivalent to loop iterator dependent control flow within the loop
+scan_i[0:channels_tiled, 0] = deltaBu[0:channels_tiled, 0]
+
+for i in nl.sequential_range(seq_len - 1):
+    scan_i[0:channels_tiled, i+1] = (deltaA_i[0:channels_tiled, i+1]
+                                     * scan_i[0:channels_tiled, i]
+                                     + deltaBu_i[0:channels_tiled, i+1])
+```
+
+Inside the loop the current implementation invokes one instruction for multiplication and another for addition. Since both instructions are performed on tiles of shape `[channels_tiled, 1]`, we can combine them using [`nisa.tensor_scalar`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.tensor_scalar.html), which supports two operators pipelined within a single instruction at the same cost as a single operator. Below is an implementation that provides 2× speedup over the previous:
+
+```python
+scan_i = nl.ndarray((channels_tiled, seq_len), dtype=deltaA.dtype, buffer=nl.sbuf)
+scan_i[0:channels_tiled, 0] = deltaBu[i_p, 0]
+
+for i in nl.sequential_range(seq_len - 1):
+    scan_i[0:channels_tiled, i+1] = nisa.tensor_scalar(
+        deltaA[0:channels_tiled, i+1],
+        op0=nl.multiply,
+        operand0=scan_i[0:channels_tiled, i],
+        op1=nl.add,
+        operand1=deltaBu[0:channels_tiled, i+1])
+```
+
+However, the loop nest still turns into `seq_len` instructions, each with input tiles of a single element per partition in SBUF. Every `nisa.tensor_scalar` instruction also has a data dependency on the output of the previous instruction. As discussed in the [Trainium/Inferentia2 architecture guide](/nki/guides/architecture/trainium_inferentia2_arch), these two traits combined are extremely *inefficient* on ScalarE/VectorE: the static instruction overhead dominates the engine timeline.
+
+NKI exposes another instruction — [`nisa.tensor_tensor_scan`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.tensor_tensor_scan.html) on VectorE — which performs the loop nest above in a *single* instruction by caching the intermediate scan result from the previous time step internally in VectorE without going through SBUF:
+
+```python
+scan_i = nisa.tensor_tensor_scan(deltaA_i, deltaBu_i, initial=0,
+                                 op0=np.multiply, op1=np.add)
+```
+
+The shape of `scan_i` is the same as the inputs `deltaA_i`/`deltaBu_i`: `[channels_tiled, seq_len]`.
+
+### Step 5: Element-wise multiplication of `C_i` and `scan_i`
+
+PyTorch reference implementation:
+
+```python
+# scan_res: [batch_size, channels, state_size, seq_len]
+# C:        [batch_size, state_size, seq_len]
+scanC = C[:, None, :, :] * scan_res
+
+# Holding batch and state constant
+# scan_i: [channels_tiled, seq_len]
+# C_i:    [seq_len]
+scanC_i = C_i[None, :] * scan_i[:, :]
+```
+
+Since `channels_tiled` is the partition dimension in `scan_i` from the previous step, we need a partition-dimension broadcast on `C_i` before invoking `nisa.tensor_tensor`:
+
+<Frame caption="Step 5: p-dim broadcast + `nisa.tensor_tensor`">
+  <img src="/images/nki/img/mamba_step5.png" alt="Step 5 partition-dim broadcast with tensor_tensor" />
+</Frame>
+
+The corresponding NKI code:
+
+```python
+C_i_bcast = C_i.broadcast((nl.tile_size.pmax, seq_len))
+scanC_i = nisa.tensor_tensor(scan_i, C_i_bcast, op=ml.multiply)
+```
+
+### Step 6: Accumulation of `scanC_i` along the `state_size` dimension
+
+Through Step 1–5 all the computation is logically parallel across the `state_size` dimension. This step introduces the first data dependency along `state_size`. PyTorch reference:
+
+```python
+# scan_res: [batch_size, channels, state_size, seq_len]
+# C:        [batch_size, state_size, seq_len]
+# -2 dim is state_size
+scanC.sum(dim=-2)
+
+# Holding batch constant only.
+# scan_i_states: [channels_tiled, state_size, seq_len]
+(scanC_i).sum(dim=-2)
+```
+
+In NKI, we accumulate the `scanC_i` results across states element-wise using `state_size-1` `nisa.tensor_tensor` instructions:
+
+<Frame caption="Step 6: `state_size-1` `nisa.tensor_tensor` instructions">
+  <img src="/images/nki/img/mamba_step6.png" alt="Step 6 accumulation across states" />
+</Frame>
+
+Since we are looping over different states, we can declare an empty accumulation buffer `scanC_accum` of shape `[channels_tiled, seq_len]` outside the loop and accumulate into it at the end of every iteration using `+=`. Using a single accumulation buffer avoids allocating memory for `scanC_i` across all states in SBUF:
+
+```python
+scanC_accum = nl.zeros(...)
+
+for i_state in nl.affine_range(state_size):
+    scanC_i = ...
+    scanC_accum += scanC_i
+```
+
+## Initial NKI kernel
+
+Putting the pieces together from the previous section, we get the initial kernel `mamba_v1`:
+
+<Card
+  title="mamba_nki_kernels.py"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/fused_mamba/mamba_nki_kernels.py"
+  horizontal
+>
+  Three versions of the Mamba NKI kernel: `mamba_v1` (`NKI_EXAMPLE_25`), `mamba_v2` (`NKI_EXAMPLE_26`), and `mamba_v3` (`NKI_EXAMPLE_27`).
+</Card>
+
+In the code example:
+
+- We have three levels of loop nesting, from outermost to innermost:
+  - Iterating over `batch` — different batch samples perform completely different computation. `A` is the only input parameter shared across batch samples.
+  - Iterating over `state_size` — different states perform parallel computation until Step 6. Both `delta` and `u` are shared across states.
+  - Iterating over `channels` — the innermost dimension where we tile the input channels into `nl.tile_size.pmax=128` chunks. Both `B` and `C` are shared across channels.
+- The kernel assumes `channels` is a multiple of `nl.tile_size.pmax=128`. You can relax this by adding a `mask` parameter to every NKI API call in the kernel. We omit it here to keep the example compact. See [NKI API masking](/nki/guides/nki-api-masking) for more information.
+- We declare an empty intermediate tensor `scanC_accum` to hold partial summation from every state.
+- Within the inner loop, we process data for `nl.tile_size.pmax=128` channels for one batch sample in one state.
+  - We use slicing to index a tensor. For example, `delta[i_batch, channel_start:channel_start+channel_psize, 0:seq_len]` grabs data from `delta` for the current range of channels at the current batch sample.
+  - In tensor slicing, the first dimension from the left with a slicing range is chosen as the partition dimension. When loading `B`, since we intend to load only one state's worth of data into one partition of SBUF (as discussed in Step 3), we need to explicitly slice the state using `nl.load(B[i_batch, i_state:i_state+1, 0:seq_len])`. Otherwise `nl.load(B[i_batch, i_state, 0:seq_len])` treats `seq_len` as the partition dimension, which is not what we planned for in Step 3 and would also trigger a NKI compilation error since `seq_len` exceeds `nl.tile_size.pmax`.
+  - We accumulate partial `scanC_i` results into the accumulation buffer using `+=`. This creates a loop-carried dependency for `scanC_accum` on the `i_state` loop.
+
+### Performance check
+
+Re-run neuron-profile on the NKI kernel:
+
+<Frame caption="Profile of initial Mamba kernel implementation `mamba_v1`">
+  <img src="/images/nki/img/mamba_v1_profile.png" alt="Profile of mamba_v1 initial NKI kernel" />
+</Frame>
+
+The NKI kernel now takes **172.93 µs**, an **878×** speedup over the PyTorch reference. VectorE is the busiest engine, which makes sense because the bulk of the computation is in `nisa.tensor_tensor`, which can only run on VectorE.
+
+The goal is to keep VectorE as busy as possible throughout execution. Every NEFF execution involves some start-up and tear-down overhead. The **Selection Summary** feature in neuron-profile shows the percentage of time VectorE is busy during the actual execution period:
+
+<Frame caption="Profile of initial Mamba kernel implementation `mamba_v1` (zoomed in)">
+  <img src="/images/nki/img/mamba_v1_profile_zoomed.png" alt="Zoomed-in profile of mamba_v1 showing VectorE activity" />
+</Frame>
+
+VectorE is active over **98.71%** of the time — rather impressive. But remember we used small input shapes as a toy example: `[batch=1, seq_len=512, channels=256, n=16]`. Now let's increase `channels` and `seq_len` one at a time and observe how VectorE efficiency changes.
+
+## Increasing input `channels` size
+
+Let's increase `channels` by 16× — from 256 to a more realistic 4096. We get the following profile:
+
+<Frame caption="Profile of `mamba_v1` kernel with 4K channels">
+  <img src="/images/nki/img/mamba_v1_profile_4k_chan.png" alt="Profile of mamba_v1 kernel at 4K channels" />
+</Frame>
+
+The new device execution time is **2.34 ms**. VectorE active duration drops to **92.16%** during the core execution period, compared with **98.71%** previously. Zooming into an arbitrary region to see what could be causing VectorE to go idle:
+
+<Frame caption="`mamba_v1` kernel blocking on input tensor loading">
+  <img src="/images/nki/img/mamba_v1_profile_4k_chan_sem.png" alt="mamba_v1 blocking on input tensor loading" />
+</Frame>
+
+In the gap where VectorE is completely idle, we can hover over the first executed instruction after the gap to find the reason for idleness in the instruction's semaphore-wait condition. Here the instruction is pending on `S[22]` to reach a value of 240, which is set by `qSyncIO0` activities. This means VectorE has been waiting for input tensors to be loaded before performing more computation. If you hover over `qSyncIO0` activities during the VectorE idle period you can also see the exact input tensor name defined in NKI being loaded in the DMA:
+
+<Frame caption="DMA loading tensor `u` in `mamba_v1` profile">
+  <img src="/images/nki/img/mamba_v1_profile_4k_chan_load_var.png" alt="DMA loading tensor u in the mamba_v1 profile" />
+</Frame>
+
+We can find similar VectorE gaps throughout the execution trace. One of the reasons the VectorE active time percentage is lower is *blocking* input-tensor loading (`nl.load`) activities in the DMA. Let's analyze DMA efficiency further.
+
+Zooming out, we can make several observations. First, there are two orange boxes around the `qSyncIO0` row. Hovering over the top-left corners shows two similar performance warnings for loading IO tensors:
+
+<Frame caption="Performance warnings for reloading `u` and `delta` tensors">
+  <img src="/images/nki/img/mamba_v1_profile_4k_chan_reload.png" alt="Performance warnings for reloading u and delta tensors" />
+</Frame>
+
+This indicates we reload both `u` and `delta` about 7 times each. That could be inevitable when we lack on-chip memory (SBUF) for full reuse — but the profiler shows we are only hitting around 50% capacity usage throughout execution:
+
+<Frame caption="Low SBUF usage">
+  <img src="/images/nki/img/mamba_v1_profile_4k_chan_sb.png" alt="Low SBUF usage during mamba_v1 4K channels run" />
+</Frame>
+
+The input-tensor reloading is likely not justified, so we should investigate whether we can optimize the kernel to avoid it.
+
+### Minimize data reloading by loop reordering
+
+To understand why `delta` and `u` are being reloaded, revisit our input tensor shapes:
+
+- `delta: [batch_size, channels, seq_len]`
+- `u:     [batch_size, channels, seq_len]`
+- `A:     [channels, state_size]`
+- `B:     [batch_size, state_size, seq_len]`
+- `C:     [batch_size, state_size, seq_len]`
+
+Hold `batch_size` constant since the majority of input tensors have completely different slices for different batch samples:
+
+- `delta: [channels, seq_len]`
+- `u:     [channels, seq_len]`
+- `A:     [channels, state_size]`
+- `B:     [state_size, seq_len]`
+- `C:     [state_size, seq_len]`
+
+`delta` and `u` have the same shape with `channels` as the outer dimension, while `B` and `C` have the same shape with `state_size` as the outer dimension. All four have `seq_len` as the inner dimension. So `delta`/`u` are reused across states, and `B`/`C` are reused across channels. With conflicting reuse dimensions, it is more important to **prioritize reuse of `delta`/`u`** because `channels` is typically much larger than `state_size`:
+
+- `state_size` is 16 here and typically stays small.
+- `channels` is 4096 here and typically in the thousands.
+
+In NKI, we can prioritize `delta`/`u` reuse through loop ordering. In the initial kernel, the inner loops were:
+
+```python
+...
+for i_state in nl.affine_range(state_size):
+    for i_channel_tile in nl.affine_range(n_channel_tile):
+        # step 1-6
+...
+```
+
+Since both loops are executed serially within a single NeuronCore, the Neuron Compiler unrolls the loop instances. With the channel dimension in the fastest dimension, we load `delta`/`u` across all channels in the first state and then likely reload them in later states because of the total memory size of `delta` and `u` (16 MB in this case).
+
+To prioritize reuse of `delta`/`u`, reorder the loops. To further enforce reuse, hoist the `nl.load` calls for `delta`/`u` outside the `i_state` inner loop:
+
+```python
+...
+for i_channel_tile in nl.affine_range(n_channel_tile):
+    delta_i = nl.load(...)
+    u_i = nl.load(...)
+
+    for i_state in nl.affine_range(state_size):
+        # step 1-6
+...
+```
+
+As a side effect, we spot a loop-fusion opportunity since there are two `i_channel_tile` loop nests at the same level:
+
+```python
+scanC_accum = nl.zeros((n_channel_tile, nl.par_dim(channel_psize), seq_len), ...)
+...
+
+# First i_channel_tile loop
+for i_channel_tile in nl.affine_range(n_channel_tile):
+    delta_i = nl.load(...)
+    u_i = nl.load(...)
+
+    for i_state in nl.affine_range(state_size):
+        # step 1-6
+
+# Second i_channel_tile loop
+for i_channel_tile in nl.affine_range(n_channel_tile):
+    nl.store(..., scanC_accum[i_channel_tile, 0:channel_psize, 0:seq_len])
+
+...
+```
+
+By fusing the two `i_channel_tile` loop nests, we can pull the declaration of `scanC_accum` inside the `i_channel_tile` loop and reduce the `scanC_accum` size by a factor of `n_channel_tile`:
+
+```python
+...
+
+# Fused i_channel_tile loop
+for i_channel_tile in nl.affine_range(n_channel_tile):
+    scanC_accum = nl.zeros((nl.par_dim(channel_psize), seq_len), ...)
+
+    delta_i = nl.load(...)
+    u_i = nl.load(...)
+
+    for i_state in nl.affine_range(state_size):
+        # step 1-6
+
+    nl.store(..., scanC_accum[i_channel_tile, 0:channel_psize, 0:seq_len])
+
+...
+```
+
+Let's modify the initial kernel accordingly to get `mamba_v2` — see `NKI_EXAMPLE_26` in the source linked above. We recapture the profile:
+
+<Frame caption="Profile of `mamba_v2` kernel with loop-reordering optimization">
+  <img src="/images/nki/img/mamba_v2.png" alt="Profile of mamba_v2 kernel with loop reordering" />
+</Frame>
+
+Device execution time is now **1.61 ms** — a **31%** reduction in latency compared to our initial kernel. VectorE active duration is back up to 99.63% and the performance warnings on input-tensor reloading are gone. Out of curiosity: the loop-reordering optimization alone accounts for about 30% of the latency reduction, while the loop-fusion optimization contributes the remaining 1%. Loop reordering addresses the key concern around input data reloading, while reducing intermediate tensor size is just a nice-to-have given we were low on SBUF usage to begin with.
+
+## Increasing input `seq_len` size
+
+Now increase `seq_len` by **16×** — from 512 to 8192 — and recompile:
+
+<Frame caption="Profile of `mamba_v2` kernel with 8K seq_len">
+  <img src="/images/nki/img/mamba_v2_8K_seqlen.png" alt="Profile of mamba_v2 at 8K seq_len" />
+</Frame>
+
+The new profile takes **53.33 ms** — **33×** longer than the previous one. VectorE active duration drops to a new low of **58.93%**. Compared to the profile captured with the smaller `seq_len`, we see new DMA activity rows `qSyncSpillReload0` and `qVectorSpillReload0`, which are associated with data-movement traffic for intermediate data spilling from SBUF to device memory or reloading back to SBUF. Zooming in:
+
+<Frame caption="Poor overlap of computation and data movement">
+  <img src="/images/nki/img/mamba_v2_8K_seqlen_zoomed.png" alt="mamba_v2 at 8K seq_len showing poor compute/data-movement overlap" />
+</Frame>
+
+VectorE enters idle states due to a blocking semaphore wait for `qSyncSpillReload0` activities — the extra spill/reload is degrading computation performance. We also see low SBUF usage peaking at merely 50%. Computation and data movement are not overlapped properly, leading to low average utilization in both compute engines and DMA throughput across the timeline.
+
+Intuitively, increasing `seq_len` increases the active tile sizes of input and intermediate tensors in the free dimension, which can cause severe SBUF fragmentation and excessive spill/reload. To mitigate these inefficiencies we must **tile** the `seq_len` dimension in the NKI kernel via a new loop level.
+
+### Mitigate spilling by tiling `seq_len`
+
+We have **three** key considerations when adding this new loop level:
+
+1. Tile-size selection.
+2. Loop-carried dependency handling.
+3. Loop ordering relative to other loop nests.
+
+**Tile size of `seq_len`.** Previously with `seq_len=512` in the toy example, we reached close to 100% VectorE utilization, so set the tile size `seq_len_fsize` to 512 as a starting point. Revisit this decision as needed once we obtain a new profile.
+
+**Loop-carried dependency.** Splitting `seq_len` into chunks is straightforward for all steps except Step 4. In the associative-scan operation, the next iteration requires results from the previous iteration, introducing another loop-carried dependency with the scan tiles. Handle it via the `initial` parameter:
+
+```python
+scan_init = nl.zeros((channel_psize, 1), ...)
+
+for i_seq_len_tile in static_range(seq_len // seq_len_fsize):
+    scan_i = nisa.tensor_tensor_scan(deltaA, deltaBu, initial=scan_init,
+                                     op0=np.multiply, op1=np.add)
+    scan_init = scan_i[0:channel_psize, seq_len_fsize-1]
+```
+
+We use `static_range` instead of `affine_range` because of the new loop-carried dependencies.
+
+**Loop ordering.** The latest NKI kernel has this loop nest:
+
+```python
+...
+for i_batch in nl.affine_range(batch_size):
+
+    for i_channel_tile in nl.affine_range(n_channel_tile):
+        scanC_accum = nl.zeros((nl.par_dim(channel_psize), seq_len), ...)
+
+        delta_i = nl.load(delta[i_batch, channel_start:channel_start+channel_psize, 0:seq_len])
+        u_i = nl.load(u[i_batch, channel_start:channel_start+channel_psize, 0:seq_len])
+
+        for i_state in nl.affine_range(state_size):
+            A_i = nl.load(A[channel_start:channel_start+channel_psize, i_state])
+
+            B_i = nl.load(B[i_batch, i_state:i_state+1, 0:seq_len])
+            C_i = nl.load(C[i_batch, i_state:i_state+1, 0:seq_len])
+
+            deltaA = ...
+            deltaBu = ...
+            scanC = ...
+            ...
+            scanC_accum += ...
+
+        nl.store(..., scanC_accum[i_channel_tile, 0:channel_psize, 0:seq_len])
+...
+```
+
+Call this loop ordering `[batch_size, n_channel_tile, state_size]`. The key question is where to insert `seq_len` in this list.
+
+Appending `seq_len` as the new innermost loop requires the least code change but yields the least SBUF-usage reduction, since that ordering does not tile `scanC_accum`, `delta_i`, or `u_i`. Given `seq_len=8192` and FP32, these three tensors would occupy 8192 × 4B × 3 = 96 KiB/partition — half the available SBUF capacity. Let's experiment with this loop ordering in a new kernel `mamba_v3` (`NKI_EXAMPLE_27` in the source):
+
+<Frame caption="Profile of `mamba_v3` kernel with seq_len tiling optimization">
+  <img src="/images/nki/img/mamba_v3.png" alt="Profile of mamba_v3 with seq_len tiling" />
+</Frame>
+
+The kernel now takes **27.8 ms**, a **48%** reduction in latency compared to no `seq_len` tiling. VectorE is 94.85% active and we no longer have spilling-related DMA activities.
+
+Finally, since the key advantage of Mamba over Transformer models is that Mamba's computation and latency should scale linearly with `seq_len` rather than quadratically, let's plot the measured kernel latencies across different `seq_len` up to 8K and compare against a "perfect latency" assuming linear scaling from `seq_len=512`. Scaling efficiency is `perfect latency / measured latency` (higher is better). To showcase the importance of the last `seq_len`-tiling optimization, we compare scaling efficiency for `mamba_v2` (no `seq_len` tiling) and `mamba_v3` (with `seq_len` tiling):
+
+| seq_len | Perfect latency (ms) | mamba_v2 measured (ms) | mamba_v2 scaling efficiency | mamba_v3 measured (ms) | mamba_v3 scaling efficiency |
+|--------:|---------------------:|-----------------------:|----------------------------:|-----------------------:|----------------------------:|
+| 512     | N/A                  | 1.6                    | N/A                         | 1.6                    | N/A                         |
+| 1024    | 3.2                  | 4.4                    | 72.73%                      | 3.3                    | 96.97%                      |
+| 2048    | 6.4                  | 8.9                    | 71.91%                      | 6.6                    | 96.97%                      |
+| 3072    | 9.6                  | 13.1                   | 73.28%                      | 10.1                   | 95.05%                      |
+| 4096    | 12.8                 | 17.6                   | 72.73%                      | 13.3                   | 96.24%                      |
+| 5120    | 16                   | 23.7                   | 67.51%                      | 17.3                   | 92.49%                      |
+| 6144    | 19.2                 | 27.5                   | 69.82%                      | 19.6                   | 97.96%                      |
+| 7168    | 22.4                 | 41.3                   | 54.24%                      | 24.2                   | 92.56%                      |
+| 8192    | 25.6                 | 52.2                   | 49.04%                      | 27.8                   | 92.09%                      |
+
+The final NKI kernel `mamba_v3` reaches 90%+ scaling efficiency up to 8K `seq_len`. To support even larger `seq_len`, we need more aggressive tiling by pulling the `seq_len` loop level further toward the outer loop to tile more input/intermediate tensors, keep spilling low, and keep VectorE busy.
+
+## Download the source code
+
+<Card
+  title="aws-neuron/nki-samples — fused_mamba"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/tree/main/src/nki_samples/tutorials/fused_mamba"
+  horizontal
+>
+  PyTorch reference (`mamba_torch.py`) and three versions of the NKI kernel (`mamba_nki_kernels.py`: `mamba_v1`, `mamba_v2`, `mamba_v3`).
+</Card>
+
+### Example usage
+
+**Performance mode.** Run the PyTorch reference to generate a NEFF for profiling:
+
+```bash
+python3 mamba_torch.py --mode perf
+```
+
+Check performance numbers of `mamba_v1`, `mamba_v2`, and `mamba_v3`:
+
+```bash
+python3 mamba_nki_kernels.py --mode perf --version v1 v2 v3 --batch 1 --seq_len 2048 --channels 512 --state_size 16
+```
+
+**Accuracy mode.** Check `mamba_v1` NKI kernel accuracy against the PyTorch implementation:
+
+```bash
+python3 mamba_torch.py --mode accuracy
+```
+
+Check the optimized Mamba kernels (`mamba_v2`, `mamba_v3`) accuracy against `mamba_v1`:
+
+```bash
+python3 mamba_nki_kernels.py --mode accuracy --version v1 v2 v3 --batch 1 --seq_len 2048 --channels 512 --state_size 16
+```
+
+## Related concepts
+
+- [NKI kernel optimization walkthrough](/nki/guides/tutorials/kernel-optimization)
+- [Profiling NKI kernels with Neuron Explorer](/nki/guides/use-neuron-profile)
+- [NeuronDevice architecture guide for NKI](/nki/guides/architecture/trainium_inferentia2_arch)
+
+## Further reading
+
+- [NKI Language guide](/nki/get-started/nki-language-guide)
+- [NKI performance guide](/nki/deep-dives/nki_perf_guide)

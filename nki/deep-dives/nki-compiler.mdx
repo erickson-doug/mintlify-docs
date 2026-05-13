@@ -1,0 +1,67 @@
+---
+title: "About the NKI compiler"
+description: "Overview of the NKI compiler, its integration with the Neuron SDK, and how it enables efficient kernel development for AWS Neuron hardware."
+sidebarTitle: "NKI compiler"
+keywords: ["NKI Compiler", "Neuron Kernel Interface", "AWS Neuron SDK", "kernel compilation", "Trainium", "Inferentia", "machine learning acceleration"]
+icon: "cogs"
+---
+
+This topic covers the NKI compiler and how it interacts with the Neuron Graph Compiler to produce a complete model. The NKI compiler is responsible for compiling NKI kernels.
+
+## Overview
+
+The NKI language allows kernel writers to have direct, fine-grained control over Neuron devices. Through low-level APIs that reflect the Neuron instruction set architecture (ISA), NKI empowers developers to take direct control over critical performance optimizations during kernel development. This approach requires a dedicated NKI compiler, separate from [the existing Neuron Graph Compiler](/compiler), which compiles kernel code while preserving the developer's optimization choices. To seamlessly integrate NKI into model architectures defined in machine-learning frameworks like JAX and PyTorch, the NKI compiler also works in conjunction with the Neuron Graph Compiler.
+
+The diagram below shows the detailed compilation flow inside the Neuron compilers and how they work together to build the overall binary that is executable on Neuron hardware. The NKI compiler first parses the kernel code into an AST representation for semantic analysis. It then performs a small number of middle-end and back-end transformations on the AST, optimizing resource allocations and instruction scheduling, producing optimized NKI IR that gets integrated back into the overall model.
+
+<Frame>
+  <img src="/images/nki/img/compiler/nki-compiler-1.jpg" alt="NKI compiler flow showing AST parsing, middle-end and back-end transformations, and integration with the Neuron Graph Compiler" />
+</Frame>
+
+<Info>
+  While the NKI meta-programming language looks and feels like Python, it isn't actually Python code. When the Python interpreter encounters a top-level function decorated with `@nki.jit`, it invokes the NKI compiler to handle compilation of that function.
+</Info>
+
+```python
+# this is a Python function that calls 'kernel', which is a NKI kernel
+def a_function(x, y, z):
+    kernel(x, y, z)
+
+# this is a NKI kernel that will be compiled by the NKI compiler and
+# integrated back into the overall model by the Neuron Graph compiler
+@nki.jit
+def kernel(x, y, z):
+    # this is kernel code
+    ...
+```
+
+Using Python features within NKI kernels that aren't supported will result in useful errors from the NKI compiler indicating the feature isn't a valid NKI feature. Neuron has intentionally constrained the NKI meta-programming language to be as minimal as possible while serving the needs of building high-performance kernels for today's popular models and will continue to grow and evolve the language over time.
+
+## NKI compiler open source
+
+Neuron is planning to release the source code for the NKI compiler to increase awareness and transparency, to enable easier development of tools, and to invite participation and collaboration as we evolve the NKI language. Developers will be able to download the compiler sources, modify them, build the compiler, and use their locally built compiler in their overall model compilation flow.
+
+Sources will be available from the public git repository: [github.com/aws-neuron/nki-library](https://github.com/aws-neuron/nki-library).
+
+The repo contains all the sources for the entire NKI compiler, as well as build instructions on how to produce a standalone `nki.whl`. Once built, developers can install their locally built wheel: `pip install nki.whl`. This replaces the default NKI compiler installed with the Neuron SDK package. The local wheel is then registered to handle subsequent `@nki.jit` decorators and integrated with the rest of the Neuron Graph compiler flow.
+
+Upon installing a locally-built wheel, developers must reinstall the Neuron SDK to revert their changes to the official version of the NKI compiler. The officially built compiler has an officially tagged version; locally built versions don't. Any bug and error reports contain the version of the compiler used.
+
+## How the NKI compiler works with the graph compiler
+
+For each kernel function, Neuron runs the NKI compiler to produce an artifact for that kernel function. This is similar to compiling a single file with a traditional compiler, such as a C++ compiler.
+
+All of the kernel artifacts are managed by the Neuron SDK. Programmers don't need to manage these files themselves. Similar to prior versions of NKI, programmers mark kernel functions with `nki.jit` — the NKI compiler is invoked automatically when this decorator is encountered during compilation.
+
+The Neuron Graph Compiler (or just the Neuron Compiler) handles the rest of the model, which we refer to as "the compute graph". The framework, such as PyTorch or JAX, orchestrates the process of building a compute graph from the model definition. When the model includes a call to a NKI kernel function, the NKI compiler inserts a reference to the compiled artifact into the graph. The Graph Compiler recognizes these references and assembles the final result that can be run on the Trainium hardware.
+
+## Integration
+
+Both the NKI compiler and the Neuron Compiler are used to construct the final artifact that can be run on Trainium hardware. The NKI compiler compiles each NKI kernel function in turn, and the Neuron Compiler compiles the whole model and inserts the NKI kernels based on the references generated by the NKI compiler.
+
+This insertion of NKI kernels into the graph is done very late in the compilation process. This differs from prior versions of NKI that integrated NKI kernels earlier in the compile process. Insertion later in the process allows the NKI compiler to provide custom behavior for NKI and gives users a more predictable and performant result.
+
+## Further reading
+
+- [Neuron Compiler](/compiler)
+- [About NKI (core concepts)](/nki/get-started/about)

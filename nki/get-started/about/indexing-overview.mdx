@@ -1,0 +1,108 @@
+---
+title: "Tensor indexing on NKI"
+description: "Basic tensor indexing in NKI: integers, Python slices, ellipsis notation, and advanced access patterns for on-chip memories."
+sidebarTitle: "Indexing"
+icon: "list-ol"
+---
+
+This topic covers basic tensor indexing and how it applies to developing with the AWS Neuron SDK. This overview describes basic indexing of tensors with several examples of how to use indexing in NKI kernels.
+
+## Basic tensor indexing
+
+NKI supports basic indexing of tensors using integers as indexes. For example, we can index a 3-dimensional tensor with a single integer to get a *view* of a portion of the original tensor:
+
+```python
+x = nl.ndarray((2, 2, 2), dtype=nl.float32, buffer=nl.hbm)
+
+# x[1] returns a view of x with shape [2, 2]
+# [[x[1, 0, 0], x[1, 0, 1]], [x[1, 1, 0], x[1, 1, 1]]]
+assert x[1].shape == [2, 2]
+```
+
+NKI also supports creating views from sub-ranges of the original tensor dimension. This is done with the standard Python **slicing** syntax:
+
+```python
+x = nl.ndarray((2, 128, 1024), dtype=nl.float32, buffer=nl.hbm)
+
+# x[1, :, :] is the same as x[1]
+assert x[1, :, :].shape == [128, 1024]
+
+# Get a smaller view of the third dimension
+assert x[1, :, 0:512].shape == [128, 512]
+
+# x[:, 1, 0:2] returns a view of x with shape [2, 2]
+# [[x[0, 1, 0], x[0, 1, 1]], [x[1, 1, 0], x[1, 1, 1]]]
+assert x[:, 1, 0:2].shape == [2, 2]
+```
+
+When indexing into tensors, NeuronCore offers much more flexible memory access in its on-chip SRAMs along the free dimension. You can use this to efficiently stride the SBUF/PSUM memories at high performance for all NKI APIs that access on-chip memories. This flexibility isn't supported along the partition dimension. Device memory (HBM) is always more performant when accessed sequentially.
+
+## Tensor indexing by example
+
+In this section we share several use cases that benefit from advanced memory-access patterns and demonstrate how to implement them in NKI.
+
+### Case 1: tensor split to even and odd columns
+
+Here we split an input tensor into two output tensors, where the first output tensor gathers all the even columns from the input tensor, and the second output tensor gathers all the odd columns. We assume the rows of the input tensors are mapped to SBUF partitions, so we're effectively gathering elements along the free dimension of the input tensor.
+
+<Frame caption="Tensor split to even and odd columns">
+  <img src="/images/nki/img/pm-index-1.png" alt="Diagram of a tensor split into two output tensors — one for even columns and one for odd columns" />
+</Frame>
+
+<Card
+  title="Example: index-case-1.py"
+  icon="github"
+  href="https://github.com/aws-neuron/aws-neuron-sdk/blob/master/nki/examples/index-case-1.py"
+  horizontal
+>
+  Complete Python source for the even/odd-column split example.
+</Card>
+
+The main concept in this example is that we use slices to access the even and odd columns of the input tensor. For the partition dimension, we use the slice `:`, which selects all rows. For the free dimension, we use `0:sz_f:2` for the even columns — start at index 0, take columns up to index `sz_f`, and increment by 2. The odd columns are similar, except we start at index 1.
+
+### Case 2: transpose tensor along the f axis
+
+In this example we transpose a tensor along two of its axes. There are two main types of transposition in NKI:
+
+1. Transpose between the partition-dimension axis and one of the free-dimension axes, which is achieved via the [`nki.isa.nc_transpose`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.nc_transpose.html) API.
+2. Transpose between two free-dimension axes, which is achieved via an [`nki.isa.dma_copy`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.dma_copy.html) API, with indexing manipulation in the transposed axes to rearrange the data.
+
+In this example we focus on the second case. Consider a three-dimensional input tensor `[P, F1, F2]`, where the `P` axis is mapped to the different SBUF partitions and the `F1` and `F2` axes are flattened and placed in each partition, with `F1` as the major dimension. Our goal is to transpose the `F1` and `F2` axes with a parallel dimension `P`, which rearranges the data within each partition.
+
+<Frame caption="Tensor F1:F2 transpose">
+  <img src="/images/nki/img/pm-index-2.png" alt="Diagram of a 3D tensor with the F1 and F2 axes transposed while preserving the parallel P dimension" />
+</Frame>
+
+<Card
+  title="Example: transpose2d_nki_kernels.py"
+  icon="github"
+  href="https://github.com/aws-neuron/aws-neuron-sdk/blob/master/nki/examples/transpose2d/transpose2d_nki_kernels.py"
+  horizontal
+>
+  Complete Python source for the 2D transpose NKI kernels.
+</Card>
+
+The main concept introduced in this example is a 2D memory access pattern per partition, via additional indices. We copy `in_tile` into `out_tile`, while traversing the memory in different access patterns between source and destination, thus achieving the desired transposition.
+
+### Case 3: 2D pooling operation
+
+Lastly, we examine a case of dimensionality reduction. We implement a 2D `MaxPool` operation, which is used in many vision neural networks. This operation takes `C x [H, W]` matrices and reduces each matrix along the `H` and `W` axes. To leverage free-dimension flexible indexing, we map the `C` (parallel) axis to the `P` dimension and `H/W` (contraction) axes to the `F` dimension. Performing such a 2D pooling operation requires a 4D memory access pattern in the `F` dimension, with reduction along two axes.
+
+<Frame caption="2D-pooling operation (reducing on axes F2 and F4)">
+  <img src="/images/nki/img/pm-index-3.png" alt="Diagram of a 2D max-pool operation reducing on two axes while preserving the parallel dimension" />
+</Frame>
+
+<Card
+  title="Example: index-case-3.py"
+  icon="github"
+  href="https://github.com/aws-neuron/aws-neuron-sdk/blob/master/nki/examples/index-case-3.py"
+  horizontal
+>
+  Complete Python source for the 2D pooling example.
+</Card>
+
+## Related topics
+
+- [Data representation](/nki/get-started/about/data-representation-overview)
+- [Memory hierarchy](/nki/get-started/about/memory-hierarchy-overview)
+- [Tiling](/nki/get-started/about/tiling-overview)

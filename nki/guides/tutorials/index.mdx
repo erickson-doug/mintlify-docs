@@ -1,0 +1,61 @@
+---
+title: "NKI tutorials"
+description: "Hands-on tutorials for the AWS Neuron Kernel Interface (NKI), covering matrix operations, normalization techniques, advanced kernels, and distributed computing patterns."
+sidebarTitle: "Tutorials"
+keywords: ["NKI", "AWS Neuron", "Tutorials", "Matrix Multiplication", "Normalization"]
+icon: "flask"
+---
+
+This section provides hands-on tutorials for the Neuron Kernel Interface (NKI), demonstrating how to write custom kernels for AWS Trainium and Inferentia instances. These tutorials cover fundamental operations, advanced techniques, and distributed computing patterns using NKI.
+
+<Card
+  title="Full source on GitHub"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/tree/main/src/nki_samples/tutorials/"
+  horizontal
+>
+  Complete Python source for every tutorial is available in the `nki-samples` repo.
+</Card>
+
+## Basic operations
+
+<Columns cols={2}>
+  <Card
+    title="Matrix multiplication"
+    href="/nki/guides/tutorials/matrix_multiplication"
+  >
+    Learn the fundamentals of implementing matrix multiplication in your NKI kernels.
+  </Card>
+
+  <Card
+    title="2D transpose"
+    href="/nki/guides/tutorials/transpose2d"
+  >
+    Implement efficient 2D matrix transpose operations using NKI.
+  </Card>
+
+  <Card
+    title="Average pooling 2D"
+    href="/nki/guides/tutorials/average_pool2d"
+  >
+    Create custom 2D average pooling kernels for computer vision workloads.
+  </Card>
+</Columns>
+
+## Advanced kernels
+
+<Columns cols={2}>
+  <Card
+    title="Fused Mamba"
+    href="/nki/guides/tutorials/fused_mamba"
+  >
+    Implement fused Mamba state-space model kernels.
+  </Card>
+
+  <Card
+    title="Kernel optimization"
+    href="/nki/guides/tutorials/kernel-optimization"
+  >
+    Learn the recommended workflow for optimizing NKI kernels using profiling and performance analysis.
+  </Card>
+</Columns>

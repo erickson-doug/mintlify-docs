@@ -1,0 +1,60 @@
+---
+title: "NKI API Reference Manual"
+description: "Complete NKI API reference — hosted on the legacy Neuron ReadTheDocs site while the reference is migrated into Mintlify."
+sidebarTitle: "API reference"
+icon: "book"
+---
+
+The full NKI API reference — covering `nki`, `nki.language`, `nki.isa`, `nki.collectives`, and every generated API page — is hosted on the legacy Neuron SDK ReadTheDocs site while we migrate reference content into this site.
+
+<Card
+  title="Open the NKI API reference on ReadTheDocs"
+  icon="arrow-up-right-from-square"
+  href="https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/index.html"
+  horizontal
+>
+  Browse the complete NKI API: `nki`, `nki.language`, `nki.isa`, `nki.collectives`, `nki.api.shared`, and every individual function and class.
+</Card>
+
+## Common destinations
+
+<Columns cols={2}>
+  <Card
+    title="nki"
+    icon="arrow-up-right-from-square"
+    href="https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.html">
+    Top-level NKI package. The `@nki.jit` decorator, kernel launch syntax, and core types.
+  </Card>
+
+  <Card
+    title="nki.language"
+    icon="arrow-up-right-from-square"
+    href="https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.language.html">
+    High-level language API: tensor creation (`ndarray`, `zeros`, `ones`), data types, memory buffers, loop ranges, math operations.
+  </Card>
+
+  <Card
+    title="nki.isa"
+    icon="arrow-up-right-from-square"
+    href="https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.isa.html">
+    Low-level Instruction Set Architecture API. Each function maps directly to a Trainium hardware operation.
+  </Card>
+
+  <Card
+    title="nki.collectives"
+    icon="arrow-up-right-from-square"
+    href="https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.collectives.html">
+    Multi-device collective communication: `all_reduce`, `all_gather`, `collective_permute`, and related primitives.
+  </Card>
+</Columns>
+
+<Note>
+  The NKI API reference will migrate into this Mintlify site in a future release. Links on ReadTheDocs always point to the latest published version (`en/latest/`). To view a specific historical release, replace `latest` with a version like `v2.27.0` in the URL.
+</Note>
+
+## Related topics
+
+- [Neuron Kernel Interface (NKI)](/nki)
+- [NKI Language Guide](/nki/get-started/nki-language-guide)
+- [NKI Library](/nki/library)
+- [NKI FAQ](/nki/nki_faq)

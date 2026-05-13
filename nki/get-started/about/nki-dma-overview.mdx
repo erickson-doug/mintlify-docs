@@ -1,0 +1,217 @@
+---
+title: "Introduction to Direct Memory Access (DMA) with NKI"
+description: "Direct Memory Access (DMA) engines in Neuron enable efficient data movement between different memory types, maximizing memory bandwidth utilization and overall workload performance."
+sidebarTitle: "Direct Memory Access"
+icon: "right-left"
+---
+
+Direct Memory Access (DMA) engines in Neuron enable efficient data movement between different memory types — primarily between device memory (HBM) and on-chip SRAM buffers (SBUF). DMA engines can operate in parallel with compute, which lets asynchronous data movement run independently from compute operations. Each NeuronCore (v2–v4) is paired with 16 DMA engines. Understanding and efficiently using these DMA engines is critical for maximizing memory-bandwidth utilization and overall workload performance.
+
+Before reading this doc, it may help to refer to [Introduction to memory hierarchy in NKI](/nki/get-started/about/memory-hierarchy-overview).
+
+## Basic DMA capabilities
+
+To move data between HBM and SBUF, you initiate a DMA transfer that's executed by the DMA engines. Each DMA transfer starts with a DMA trigger from a NeuronCore and ends with a semaphore update from the DMA engine to signal completion back to the NeuronCore. Today, each DMA transfer is by default parallelized across up to 16 DMA engines, depending on shape.
+
+The 16 DMA engines are connected to both the off-chip HBM and the on-chip SRAM (SBUF). DMA transfers can move data in multiple directions: bidirectionally between HBM and SBUF, within HBM, or within SBUF. Each DMA engine has a theoretical bandwidth of 27.2 GB/s for NeuronCore-v2 and -v3, or 38.4 GB/s for NeuronCore-v4. DMA engines also support scatter-gather operations, allowing a single transfer to gather data from multiple non-contiguous source buffers or scatter to multiple non-contiguous destination buffers.
+
+DMA transfers can perform both copy and transpose transfers into SBUF. This page focuses on copy transfers.
+
+You can also perform casting as part of DMA when the transfer has a different source and destination datatype. See the [NKI datatype guide](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.api.shared.html) for Neuron-supported datatypes. The casting operation is performed by first casting the source type to FP32, before finally casting to the destination type. This may be worth considering if working with integer types. Casting with DMAs isn't supported for MXFP4 and MXFP8 datatypes.
+
+## DMA triggers
+
+DMA transfers can be triggered by any engine sequencer in the NeuronCore. (For details, see [Trainium2 architecture](/nki/guides/architecture/trainium2_arch).) The sequencer instruction to trigger the transfer can wait on any semaphore condition signaled by other compute engines, which respects data dependencies. The trigger engine for a given transfer can be specified by setting the `engine` parameter when calling [`nisa.dma_copy`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.dma_copy.html). This behavior is only allowed when using hardware DGE in the current NKI release.
+
+## DMA queues
+
+DMA transfers are submitted to DMA queues for the DMA engines to consume. There are 16 DMA queues per DMA engine (ID 0–15). A given DMA transfer can be submitted to a single queue ID across all 16 DMA engines paired with a NeuronCore. The queue for a DMA transfer can be seen when hovering over a DMA transfer in a profile in Neuron Explorer. The queue ID is typically tied to the trigger engine and the method of descriptor generation (see the NeuronCore-v3 architecture guide for details). DMA transfers within a queue on the same DMA engine are executed in order. DMA transfers from different DMA queues are scheduled in a round-robin fashion (for NeuronCore-v2 and -v3) or based on the queue QoS configured (for NeuronCore-v4). See the NeuronCore-v4 architecture guide for more details on DMA QoS.
+
+## Performance considerations
+
+When moving data in or out of SBUF, optimal performance is achieved with transfers that maximize the number of partitions with 4 KiB or more per partition. Given 16 DMA engines and 128 SBUF partitions, each DMA engine is typically responsible for moving data for eight SBUF partitions (128 / 16). The figure below visualizes DMA throughput across different bytes-per-partition ("free bytes") for a fixed partition-dimension size of 128:
+
+<Frame>
+  <img src="/images/nki/img/overviews/nki-dma-intro-1.jpg" alt="Graph of DMA throughput versus free bytes per partition, showing near-peak throughput by ~4,096 free bytes" />
+</Frame>
+
+The points on the graph refer to various free-dimension byte values (bytes per partition). We see that at 4,096 free bytes we're able to nearly saturate DMA bandwidth.
+
+Another key consideration for performance is overhead to initiate a DMA transfer. Small, frequent transfers incur significant overhead, which makes us latency-bound, while larger transfers help amortize these costs and move us to a more bandwidth-bound regime. For optimal performance, batch data movements into larger transfers whenever possible.
+
+The table below shows the theoretical peak DMA bandwidth per NeuronCore generation:
+
+| Generation | BW per engine | Engines per NC | Aggregate BW |
+|---|---|---|---|
+| Trainium1 | 17 B/ns | 16 | 272 GB/s |
+| Trainium2 | 23 B/ns | 16 | 368 GB/s |
+| Trainium3 | 33 B/ns | 16 | 528 GB/s |
+
+The minimum free-dimension size to reach the recommended 2 KiB per partition depends on the datatype:
+
+| Data type | Minimum free dimension | Bytes per partition |
+|---|---|---|
+| float32 | 512 elements | 2,048 |
+| bfloat16 / float16 | 1,024 elements | 2,048 |
+| float8 | 2,048 elements | 2,048 |
+
+Let's look at two examples showing various shapes, sizes, and access patterns, and how these affect achieved DMA throughput.
+
+## Examples
+
+Because DMAs are a result of the corresponding source layout and access pattern, it's best to look at concrete examples to ground our understanding of common applications and their resulting access patterns.
+
+### Example 1: move A[4, 4096] HBM → SBUF
+
+The purpose of this example is to show a simple access pattern — a 2D tensor in contiguous memory in HBM being written to SBUF. This builds a foundation of how a particular access pattern maps to a specific set of DMA transfers.
+
+Consider a 2D tensor `A[4, 4096]` in HBM. Assume the tensor is laid out in row-major form and is contiguous in the HBM. In row-major form, array elements are stored sequentially row by row in memory, meaning all elements of the first row are stored first, followed by all elements of the second row, and so on. Assume we want to move this tensor to SBUF, where the destination tensor will have a partition dimension of 4 and a free dimension of 4,096. Each row of the source tensor will occupy a single partition in SBUF.
+
+Assuming `A` is a bfloat16 tensor, the total size of the tensor is 32 KiB (4 × 4,096 × 2 B). Since each DMA engine corresponds to 8 partition lanes, and we're writing our 4 rows to only 4 partition lanes of SBUF, we expect to see a single DMA engine active, with a single transfer size of 32 KiB.
+
+<Frame>
+  <img src="/images/nki/img/overviews/nki-dma-intro-2.jpg" alt="Diagram of DMA transfer of A[4, 4096] from HBM to SBUF on a single DMA engine" />
+</Frame>
+
+#### Example
+
+Here is the kernel to perform the DMA transfer:
+
+```python
+import nki.language as nl
+import nki.isa as nisa
+import nki
+
+@nki.jit
+def tensor_exp_kernel_isa(in_tensor):
+    """NKI kernel to compute elementwise exponential of an input tensor.
+
+    Args:
+        in_tensor: an input tensor of shape [4, 4096]
+
+    Returns:
+        out_tensor: an output tensor of shape [4, 4096]
+    """
+    out_tensor = nl.ndarray(in_tensor.shape, dtype=nl.bfloat16, buffer=nl.shared_hbm)
+    sbuf_tensor = nl.ndarray(in_tensor.shape, dtype=nl.bfloat16, buffer=nl.sbuf)
+    out_tile = nl.ndarray(in_tensor.shape, dtype=nl.bfloat16, buffer=nl.sbuf)
+
+    # Load input data from HBM to on-chip memory
+    nisa.dma_copy(src=in_tensor[0:4, 0:4096], dst=sbuf_tensor)
+
+    # Perform the computation
+    out_tile = nisa.activation(op=nl.exp, data=sbuf_tensor)
+
+    # Store the results back to HBM
+    nisa.dma_copy(src=out_tile, dst=out_tensor[0:4, 0:4096])
+    return out_tensor
+
+
+if __name__ == "__main__":
+    import torch
+    import torch_neuronx
+    shape = (4, 4096)
+    in_tensor = torch.ones(shape, dtype=torch.bfloat16)
+    out_tensor = tensor_exp_kernel_isa(in_tensor)
+    print(out_tensor)
+```
+
+#### Profile
+
+The above code runs on a single NeuronCore-v3 in a Trn2 instance. We can look at the profile to validate the expected behavior. See the [Neuron Explorer user guide](/tools/neuron-explorer) for guidance on how to generate a profile.
+
+<Frame>
+  <img src="/images/nki/img/overviews/nki-dma-intro-3.png" alt="Profile showing a single DMA engine performing the 32 KiB HBM → SBUF transfer for example 1" />
+</Frame>
+
+This matches our analysis. From the profile we can see the first DMA engine takes 1,416 ns to load 32 KiB from HBM to SBUF plus a small 4-byte semaphore update. Even though the remaining 15 DMA engines don't perform useful data movement, they also perform small 4-byte semaphore-update writes. This lets the NeuronCore always monitor a semaphore increment of 16 to signal DMA-transfer completion, regardless of tensor shapes.
+
+This is good, but this example uses only a single DMA engine. In the next example, we increase the partition dimension to increase the number of DMA engines in use.
+
+### Example 2: move A[128, 128] HBM → SBUF
+
+The purpose of this example is to show how, as partition count scales, the number of DMA engines in use increases.
+
+Consider a 2D tensor `A[128, 128]` in HBM, laid out in row-major form and contiguous in HBM. Assuming we want to move `A` from HBM to SBUF, how many DMA engines will this require?
+
+The total tensor size is 32 KiB (128 × 128 × 2 B), the same as the previous example. We write across 128 partitions of SBUF, with each row corresponding to a partition lane. Knowing each DMA engine corresponds to 8 partition lanes, and we're writing to 128 partitions, we expect all 16 DMA engines to be active, each performing a single DMA operation of 2 KiB (8 rows × 128 elements × 2 bytes per element).
+
+<Frame>
+  <img src="/images/nki/img/overviews/nki-dma-intro-4.jpg" alt="Diagram of DMA transfer of A[128, 128] from HBM to SBUF across all 16 DMA engines" />
+</Frame>
+
+#### Example
+
+```python
+import nki.language as nl
+import nki.isa as nisa
+import nki
+import os
+
+os.environ["NEURON_FRAMEWORK_DEBUG"] = "1"
+os.environ["NEURON_RT_ENABLE_DGE_NOTIFICATIONS"] = "1"
+os.environ["NEURON_PLATFORM_TARGET_OVERRIDE"] = "trn2"
+
+
+@nki.jit(mode="torchxla")
+def tensor_exp_kernel_isa(in_tensor):
+    """NKI kernel to compute elementwise exponential of an input tensor.
+
+    Args:
+        in_tensor: an input tensor of shape [128, 128]
+
+    Returns:
+        out_tensor: an output tensor of shape [128, 128]
+    """
+    out_tensor = nl.ndarray(in_tensor.shape, dtype=nl.bfloat16, buffer=nl.shared_hbm)
+    sbuf_tensor = nl.ndarray(in_tensor.shape, dtype=nl.bfloat16, buffer=nl.sbuf)
+    out_tile = nl.ndarray(in_tensor.shape, dtype=nl.bfloat16, buffer=nl.sbuf)
+
+    # Load input data from HBM to on-chip memory
+    nisa.dma_copy(src=in_tensor[0:128, 0:128], dst=sbuf_tensor)
+
+    # Perform the computation
+    out_tile = nisa.activation(op=nl.exp, data=sbuf_tensor)
+
+    # Store the results back to HBM
+    nisa.dma_copy(src=out_tile, dst=out_tensor[0:128, 0:128])
+    return out_tensor
+
+
+if __name__ == "__main__":
+    import torch
+    import torch_xla
+
+    device = torch_xla.device()
+    shape = (128, 128)  # Tensor shape: [128, 128]
+    in_tensor = torch.ones(shape, dtype=torch.bfloat16).to(device=device)
+    print(in_tensor.dtype)
+    out_tensor = tensor_exp_kernel_isa(in_tensor)
+    print(out_tensor)  # an implicit XLA barrier/mark-step
+```
+
+#### Profile
+
+<Frame>
+  <img src="/images/nki/img/overviews/nki-dma-intro-5.png" alt="Profile showing all 16 DMA engines active for example 2" />
+</Frame>
+
+In this profile, all 16 DMA engines are active, as each DMA engine reads 8 rows from HBM and writes to 8 corresponding partition lanes in SBUF. The reverse also applies from SBUF back to HBM. Hovering over an individual DMA operation shows each DMA engine corresponds to a single 2-KiB read (8 rows × 128 elements × 2 B), as we expect.
+
+Using the same profile, let's look at the DMA trigger and the associated transfer. You can trace the DMA-trigger instruction and the associated DMA transfer through the profiler — useful to understand why a DMA was triggered and any preceding dependencies.
+
+<Frame>
+  <img src="/images/nki/img/overviews/nki-dma-intro-6.png" alt="Profile showing the DMA trigger originating from qGpSimdDynamic" />
+</Frame>
+
+<Frame>
+  <img src="/images/nki/img/overviews/nki-dma-intro-7.png" alt="Profile showing the corresponding trigger in GpSimd" />
+</Frame>
+
+We can see the first DMA is triggered from `qGpSimdDynamic` (first screenshot). We can look at GpSimd to see the corresponding trigger (second screenshot).
+
+## Related topics
+
+- [Memory hierarchy](/nki/get-started/about/memory-hierarchy-overview)
+- [Data representation](/nki/get-started/about/data-representation-overview)
+- [Tiling](/nki/get-started/about/tiling-overview)

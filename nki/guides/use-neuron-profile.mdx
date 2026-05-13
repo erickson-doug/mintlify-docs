@@ -1,0 +1,234 @@
+---
+title: "Profile a NKI kernel"
+description: "Profile Neuron Kernel Interface (NKI) kernels using Neuron Explorer to analyze hardware-level performance on Trainium and Inferentia devices."
+sidebarTitle: "Profile a kernel"
+icon: "chart-simple"
+---
+
+Learn how to profile Neuron Kernel Interface (NKI) kernels using Neuron Explorer to analyze hardware-level performance characteristics on Trainium and Inferentia devices. This guide covers profiling with the `neuron-explorer capture` command-line tool. You'll discover how to generate NEFF and NTFF files, identify performance bottlenecks, optimize kernel execution, and use the interactive web-based Neuron Profile UI to visualize execution traces with source-code integration for efficient NKI kernel development and optimization.
+
+## Install Neuron Explorer
+
+Ensure you have the latest version of the `aws-neuronx-tools` package installed — Neuron Explorer comes with this package. The `aws-neuronx-tools` package is pre-installed on Neuron DLAMIs.
+
+For detailed installation instructions, see [Get started with Neuron Explorer](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/tools/neuron-explorer/index.html).
+
+## Profile a NKI kernel
+
+Profiling NKI kernels helps you understand hardware-level performance characteristics of your kernels running on AWS Trainium and Inferentia devices. When you write or optimize custom NKI kernels, profiling lets you:
+
+- **Identify bottlenecks** — determine if your kernel is compute-bound, memory-bound, or limited by data movement.
+- **Optimize performance** — analyze kernel-level execution time, investigate compute-engine utilization, and look for opportunities to implement operator fusion.
+- **Compare implementations** — benchmark different kernel implementations or configurations to pick the most efficient.
+
+You can profile NKI kernels using several approaches. In this guide, you'll learn the primary method.
+
+### How to profile using `neuron-explorer capture`
+
+To profile an NKI kernel using `neuron-explorer capture`, follow three steps:
+
+1. Set the environment variable `NEURON_FRAMEWORK_DEBUG=1` to instruct the compiler to save the NEFF (Neuron Executable File Format) file.
+2. Execute the NKI kernel to generate the NEFF file.
+3. Run `neuron-explorer capture` to create an NTFF (Neuron Trace File Format) file for performance analysis.
+
+Each step is explained below.
+
+#### Step 1: set environment variables
+
+We profile a 3-layer MLP model that fuses matrix multiplications with ReLU activation functions and uses a NKI matrix-multiplication kernel. The rest of this tutorial uses a performance profile generated from this example.
+
+<Card
+  title="Sample: mlp_with_mm_kernel.py"
+  icon="github"
+  href="https://github.com/aws-neuron/aws-neuron-samples"
+  horizontal
+>
+  Full source for the MLP + NKI matmul kernel used throughout this guide.
+</Card>
+
+At the very top of the sample, the following environment variables are set:
+
+```python
+os.environ["NEURON_FRAMEWORK_DEBUG"] = "1"
+os.environ["XLA_IR_DEBUG"] = "1"
+os.environ["XLA_HLO_DEBUG"] = "1"
+```
+
+These environment variables serve the following purposes:
+
+- `NEURON_FRAMEWORK_DEBUG=1` — Enables Neuron debug output. This triggers the Neuron compiler to save the NEFF artifact to the current directory after compilation of your NKI kernel. The NEFF contains all hardware instructions required to execute your NKI kernel on a NeuronDevice, as well as metadata and debug info needed for profiling.
+- `XLA_IR_DEBUG=1` — Preserves the mapping between high-level framework operations (for example, PyTorch operators) and the intermediate representation (IR) passed to the compiler. This enables source-code linking from device instructions back to framework-level code in the profiler.
+- `XLA_HLO_DEBUG=1` — Preserves the mapping between the HLO (High Level Operation) graph and the original framework operations. This enables the profiler to display descriptive operator names and stack-frame information, making it easier to identify which part of your model corresponds to each device instruction.
+
+#### Step 2: compile your NKI kernel
+
+Compile your NKI kernel to create a NEFF in your current directory:
+
+```bash
+python3 mlp_with_mm_kernel.py
+```
+
+<Note>
+  The `compiler_workdir` argument to `torch_neuronx.trace` specifies the directory where the compiler saves artifacts, including the NEFF file. Look for your NEFF file inside `./compiler_workdir`, named `graph.neff`.
+</Note>
+
+#### Step 3: profile the generated NEFF
+
+Profile the generated NEFF. This step executes the NEFF on the NeuronDevice and records a raw execution trace into an NTFF artifact:
+
+```bash
+neuron-explorer capture -n ./compiler_workdir/graph.neff -s profile.ntff --profile-nth-exec=2 --enable-dge-notifs
+```
+
+This saves your NTFF profile to `profile_exec_2.ntff`.
+
+<Info>
+  The `--profile-nth-exec=2` option profiles your NEFF twice on the NeuronDevice and outputs an NTFF profile for the second iteration. Recommended to avoid one-time warmup delays which can be seen in the first iteration of execution.
+
+  The `--enable-dge-notifs` option enables the capture of DGE DMA events but has known issues where it may overflow the status notification queue and cause execution timeouts when there are many DGE instructions.
+</Info>
+
+## View the Neuron Explorer UI
+
+This section assumes you've completed the previous step and have already generated both the NEFF and NTFF files, and downloaded them to your local machine.
+
+Neuron Explorer includes an interactive, web-based UI for exploring execution traces in detail. In this section we open the Neuron Explorer UI to examine NKI-specific profiling information. For a comprehensive overview of all available viewers, see the [Neuron Explorer documentation](/tools/neuron-explorer).
+
+To view the Neuron Profile web UI, execute the `view` command to start the web UI, replacing `<workspace>` with a path to a folder to store your profiling artifacts:
+
+```bash
+neuron-explorer view --data-path ./<workspace>
+```
+
+`<workspace>` is a path neuron profile uses for storing and managing profiles.
+
+The command should print a URL you can click to open the web UI:
+
+```text
+View a list of profiles at http://localhost:3001/
+```
+
+### Port forwarding for remote instances
+
+If `neuron-explorer view` is run on a remote instance, you may need port forwarding to access the web UI. By default, neuron-explorer creates a web server on port 3001 and the API server on port 3002. To enable connection to your browser on your local computer, establish an SSH tunnel to both ports:
+
+```bash
+ssh -L 3001:localhost:3001 -L 3002:localhost:3002 <user>@<ip> -fN
+```
+
+If you created an EC2 instance with `pem` credentials, include it in the SSH tunnel:
+
+```bash
+ssh -i ~/my-ec2.pem -L 3001:localhost:3001 -L 3002:localhost:3002 ubuntu@[PUBLIC_IP_ADDRESS] -fN
+```
+
+### Using the profile UI
+
+Once the SSH tunnel is set up, open a browser and navigate to `http://localhost:3001`.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-1.png" alt="Neuron Profiler landing page" />
+</Frame>
+
+Click **Upload Profile** to upload NEFF and NTFF files and give a meaningful name to your profile. Selecting a source-code folder for code linking is optional.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-2.png" alt="Upload Profile dialog" />
+</Frame>
+
+After the files are uploaded and processed, open the profile from the list.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-3.png" alt="Profile list" />
+</Frame>
+
+Click the name of your profile in the **Profile Name** column to navigate to the profile page.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-4.png" alt="Profile page" />
+</Frame>
+
+Hover over any engine instruction in the timeline to see instruction details in a pop-up box.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-5.png" alt="Instruction hover tooltip" />
+</Frame>
+
+Click any engine instruction in the timeline to see event details in a panel below the timeline.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-6.png" alt="Instruction click panel" />
+</Frame>
+
+To view the hierarchy of this profile, click **Add Widget** and select **Hierarchy**. For more details, see the [Hierarchy Viewer](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/tools/neuron-explorer/overview-hierarchy-view.html) documentation.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-7.png" alt="Hierarchy widget" />
+</Frame>
+
+Using the Profiler's flexible layout support, drag and group widgets into any panel of your choice to customize the layout for your workflow.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-8.png" alt="Customized profiler layout" />
+</Frame>
+
+Right-click an operator in the hierarchy timeline to highlight all related instructions in the instruction timeline.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-9.png" alt="Related instructions highlighted" />
+</Frame>
+
+### View NKI source code in Neuron Profile
+
+You can optionally include your NKI source-code files for display in Neuron Profile. When provided, Neuron Profile loads the source code into an integrated viewer, displayed side-by-side with the execution timeline in the web UI. This makes it easier to navigate between the instruction trace and the corresponding NKI source code, and to track the exact version of the code that generated the profile. For more details on source-code linking, see [Source Code Viewer](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/tools/neuron-explorer/how-to-link-view-source-code.html).
+
+<Note>
+  Even if you don't upload the source code, the NKI source filename and line number remain available in the instruction detail view.
+</Note>
+
+If source code is uploaded with NEFF and NTFF files, open the code editor by clicking **Add Widget** and selecting **Code Editor**.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-10.png" alt="Add code editor widget" />
+</Frame>
+
+The code editor opens on the right side.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-11.png" alt="Code editor panel" />
+</Frame>
+
+Hover on an instruction that has an NKI source location. **Command + left-click** on Mac (or **Ctrl + right-click** on Windows) to jump to the line of source code and highlight all instructions related to that line.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-12.png" alt="Jump from instruction to source line" />
+</Frame>
+
+You can enable different source-code decorations in **Source Code Settings**.
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-13.png" alt="Source code settings menu" />
+</Frame>
+
+<Frame>
+  <img src="/images/nki/img/how-to/nki-profiler-14.png" alt="Source code with decorations enabled" />
+</Frame>
+
+## Next steps
+
+Now that you've learned how to profile an NKI kernel, take this further:
+
+- Read the [NKI performance guide](/nki/deep-dives/nki_perf_guide) for techniques to make your kernels faster and more efficient.
+- Explore the [NKI sample kernels](https://github.com/aws-neuron/nki-samples) for real-world examples of high-performance kernel implementations.
+- Learn more about Neuron Explorer viewers to deepen your profiling analysis:
+  - [Device Trace Viewer](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/tools/neuron-explorer/overview-device-profiles.html)
+  - [Hierarchy Viewer](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/tools/neuron-explorer/overview-hierarchy-view.html)
+  - [Source Code Viewer](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/tools/neuron-explorer/how-to-link-view-source-code.html)
+  - [Summary Viewer](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/tools/neuron-explorer/overview-summary-page.html)
+  - [AI Recommendation Viewer](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/tools/neuron-explorer/overview-ai-recommendations.html)
+
+## Related topics
+
+- [Use the NKI scheduling APIs](/nki/guides/how-to-scheduling-apis)
+- [NKI performance guide](/nki/deep-dives/nki_perf_guide)
+- [NKI CPU simulator](/nki/guides/nki_simulator)

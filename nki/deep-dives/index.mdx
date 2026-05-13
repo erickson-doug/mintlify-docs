@@ -1,0 +1,66 @@
+---
+title: "NKI deep dives"
+description: "In-depth technical documentation and advanced guides for the Neuron Kernel Interface (NKI): performance optimization, MXFP matmul, access patterns, dynamic loops, DGE, DMA bandwidth, and the NKI compiler."
+sidebarTitle: "Deep dives"
+keywords: ["NKI", "AWS Neuron", "Deep Dives", "Advanced Programming"]
+icon: "graduation-cap"
+---
+
+This section provides in-depth technical documentation and guides for advanced users of the Neuron Kernel Interface (NKI). These deep dives offer detailed explanations of NKI concepts, programming patterns, and best practices to help you maximize the performance and capabilities of your NKI code on AWS Neuron devices.
+
+## Optimizing a NKI kernel
+
+<Columns cols={2}>
+  <Card
+    title="NKI performance optimizations"
+    href="/nki/deep-dives/nki_perf_guide"
+  >
+    Performance-tuning techniques for NKI kernels on AWS Neuron devices.
+  </Card>
+</Columns>
+
+## Advanced NKI programming
+
+<Columns cols={2}>
+  <Card
+    title="MXFP4/8 matrix multiplication"
+    href="/nki/deep-dives/mxfp-matmul"
+  >
+    Matrix multiplication using MXFP8 data types in NKI kernels, including data layout, quantization, and tiling strategies.
+  </Card>
+
+  <Card
+    title="NKI compiler"
+    href="/nki/deep-dives/nki-compiler"
+  >
+    How the NKI compiler integrates with the Neuron Graph Compiler to produce the final binary.
+  </Card>
+
+  <Card
+    title="NKI dynamic loops"
+    href="/nki/deep-dives/nki-dynamic-loops"
+  >
+    Dynamic loops with runtime-determined trip counts via hardware loop instructions.
+  </Card>
+
+  <Card
+    title="Descriptor Generation Engine (DGE)"
+    href="/nki/deep-dives/nki-dge"
+  >
+    Control how DMA descriptors are generated: pre-computed, software (GpSimd), or hardware DGE.
+  </Card>
+
+  <Card
+    title="DMA bandwidth guide"
+    href="/nki/deep-dives/nki-dma-bandwidth-guide"
+  >
+    Guidelines for maximizing DMA bandwidth with large contiguous payloads.
+  </Card>
+
+  <Card
+    title="NKI access patterns"
+    href="/nki/deep-dives/nki-aps"
+  >
+    Access Patterns (AP) to directly specify how Trainium hardware accesses tensors.
+  </Card>
+</Columns>

@@ -1,0 +1,46 @@
+---
+title: "NKI and Neuron architecture"
+description: "Architecture deep dives for each NeuronDevice generation — Trainium/Inferentia2, Trainium2, and Trainium3 — with a focus on what NKI developers can control through kernel implementation."
+sidebarTitle: "Architecture"
+keywords: ["NKI", "AWS Neuron", "Architecture", "Trainium", "trn1", "trn2", "trn3", "inf2"]
+icon: "microchip"
+---
+
+NKI currently supports the following NeuronDevice generations:
+
+- Trainium/Inferentia2, available on AWS `trn1`, `trn1n`, and `inf2` instances.
+- Trainium2, available on AWS `trn2` instances and UltraServers.
+- Trainium3, available on AWS `trn3` instances and UltraServers.
+
+The documents below provide an architecture deep dive of each NeuronDevice generation, with a focus on areas NKI developers can directly control through kernel implementation.
+
+- [Trainium/Inferentia2 architecture](/nki/guides/architecture/trainium_inferentia2_arch) — Foundational architecture guide for understanding the basics of any NeuronDevice generation.
+- [Trainium2 architecture](/nki/guides/architecture/trainium2_arch) — Walks through the architecture enhancements compared to the previous generation.
+- [Trainium3 architecture](/nki/guides/architecture/trainium3_arch) — Covers the enhancements for the next-generation Trainium ML accelerators.
+
+We recommend new NKI developers start with the Trainium/Inferentia2 architecture guide before exploring newer NeuronDevice architecture.
+
+<Columns cols={1}>
+  <Card
+    title="Trainium/Inferentia2 architecture"
+    href="/nki/guides/architecture/trainium_inferentia2_arch"
+  >
+    Foundational architecture guide for understanding NeuronDevice basics.
+  </Card>
+</Columns>
+
+<Columns cols={2}>
+  <Card
+    title="Trainium2 architecture"
+    href="/nki/guides/architecture/trainium2_arch"
+  >
+    Architecture enhancements and improvements in the Trainium2 generation.
+  </Card>
+
+  <Card
+    title="Trainium3 architecture"
+    href="/nki/guides/architecture/trainium3_arch"
+  >
+    Latest architecture features and capabilities in Trainium3 devices.
+  </Card>
+</Columns>

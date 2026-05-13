@@ -1,0 +1,303 @@
+---
+title: "Quickstart: implement and run your first kernel"
+description: "Learn how to implement and run your first NKI kernel on AWS Neuron accelerators using PyTorch or JAX."
+sidebarTitle: "First NKI kernel"
+icon: "rocket"
+---
+
+The Neuron Kernel Interface (NKI) lets you write low-level kernels that use the ISA of Trainium2 and Trainium3 ML accelerators. Your kernels can be used in PyTorch and JAX models to speed up critical parts of your model. This topic guides you through your first time writing a NKI kernel. It will help you understand the process when using AWS Neuron and NKI.
+
+When you complete it, you will have a simple kernel that adds two input tensors and returns the result, and a test program in PyTorch or JAX.
+
+- **This quickstart is for:** customers new to NKI.
+- **Time to complete:** ~10 minutes.
+
+## Prerequisites
+
+Before you begin, you'll need a Trn2 or Trn3 EC2 instance.
+
+- Your EC2 instance should have the Neuron SDK and NKI library installed. If you used the Deep Learning AMI (DLAMI), these will be available by activating a PyTorch or JAX environment with Python's `venv`.
+- A text editor or IDE for editing code.
+- Basic familiarity with Python and either PyTorch or JAX is helpful but not strictly required.
+
+## Before you start
+
+Make sure you're logged in to your EC2 instance and have activated either a PyTorch or JAX environment. See [Set up your environment for NKI development](/nki/get-started/setup-env) for details.
+
+<Steps>
+  <Step title="Import the nki library">
+    Create the `add_kernel.py` file and add imports for the `nki`, `nki.language`, and `nki.isa` libraries.
+
+    ```python
+    import nki
+    import nki.language as nl
+    import nki.isa as nisa
+    ```
+
+    Open your favorite editor or IDE and create the `add_kernel.py` code file, and then add the imports for the NKI libraries.
+  </Step>
+
+  <Step title="Create the nki_tensor_add_kernel">
+    Define the `nki_tensor_add_kernel` function.
+
+    ```python
+    @nki.jit
+    def nki_tensor_add_kernel(a_input, b_input):
+        """
+        NKI kernel to compute element-wise addition of two input tensors.
+        """
+    ```
+
+    Add the `nki_tensor_add_kernel` function definition above. Annotate it with the `@nki.jit` decorator, as in the example.
+  </Step>
+
+  <Step title="Check input size and shapes">
+    Add assertions to check that `a_input` and `b_input` are the same size/dtype and that they'll fit within the on-chip tile size.
+
+    ```python
+    # Check both input tensor shapes/dtypes are the same for element-wise operation.
+    assert a_input.shape == b_input.shape
+    assert a_input.dtype == b_input.dtype
+
+    # Check the first dimension's size to ensure it does not exceed on-chip
+    # memory tile size, since this simple kernel does not tile inputs.
+    assert a_input.shape[0] <= nl.tile_size.pmax
+    ```
+
+    The first assertion checks that `a_input` and `b_input` have the same shape. The second checks that the inputs fit within the tile size of the on-chip memory. If an input is larger than the on-chip tile size, you must tile the input. To keep this example simple, we don't discuss tiling further here.
+  </Step>
+
+  <Step title="Read input into the on-chip memory">
+    Add code to read the inputs from HBM into on-chip memory.
+
+    The `nki_tensor_add_kernel` function receives inputs from HBM memory and must move them into on-chip memory to operate over their values. First create space in the on-chip memory and then copy the value into on-chip memory for each input. See [Memory hierarchy](/nki/get-started/about/memory-hierarchy-overview) for more details on the memory hierarchy.
+
+    ```python
+    # Allocate space for the input tensors in SBUF and copy the inputs from HBM
+    # to SBUF with DMA copy.
+    a_tile = nl.ndarray(shape=a_input.shape, dtype=a_input.dtype, buffer=nl.sbuf)
+    nisa.dma_copy(dst=a_tile, src=a_input)
+
+    b_tile = nl.ndarray(shape=b_input.shape, dtype=b_input.dtype, buffer=nl.sbuf)
+    nisa.dma_copy(dst=b_tile, src=b_input)
+    ```
+
+    The `nl.ndarray` function allocates tensors in SBUF. Here you allocate `a_tile` and `b_tile` and use the [`nisa.dma_copy`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.dma_copy.html) instruction to copy tensors between HBM and SBUF memories. First supply the destination for the copy (`a_tile` and `b_tile`), then the source (`a_input` and `b_input`).
+  </Step>
+
+  <Step title="Add the two tensors">
+    Allocate a destination tensor in SBUF and put the results of adding the two tensors into the new tensor.
+
+    ```python
+    # Allocate space for the result and use tensor_tensor to perform
+    # element-wise addition. Note: the first argument of 'tensor_tensor'
+    # is the destination tensor.
+    c_tile = nl.ndarray(shape=a_input.shape, dtype=a_input.dtype, buffer=nl.sbuf)
+    nisa.tensor_tensor(dst=c_tile, data1=a_tile, data2=b_tile, op=nl.add)
+    ```
+
+    As in step 4, you allocate space for the `c_tile` in SBUF, using `nl.ndarray`. Since the shape of the output matches the inputs, you can use `a_input`'s data type and shape for the allocation. Use the [`nisa.tensor_tensor`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.tensor_tensor.html) instruction to perform element-wise calculation on two tensors. The first argument of `tensor_tensor` is the destination tensor, `c_tile`, and the sources, `a_tile` and `b_tile`, follow it. Provide `op=nl.add` to specify addition.
+  </Step>
+
+  <Step title="Copy the result to HBM">
+    Allocate space for the output tensor in HBM and copy the result from SBUF to the new tensor. This is the inverse of step 4.
+
+    ```python
+    # Create a tensor in HBM and copy the result into HBM.
+    c_output = nl.ndarray(dtype=a_input.dtype, shape=a_input.shape, buffer=nl.shared_hbm)
+    nisa.dma_copy(dst=c_output, src=c_tile)
+    ```
+
+    Use `nl.ndarray` with `buffer=nl.shared_hbm` to create tensors in HBM, similar to how you allocated space in SBUF with `buffer=nl.sbuf`. Copy the result in `c_tile` into `c_output`. Remember that `c_output` is the destination and `c_tile` is the source for the `dma_copy` instruction. The copy is needed because outputs, like inputs, need to be in HBM.
+  </Step>
+
+  <Step title="Return the output">
+    Return the result.
+
+    ```python
+    # Return kernel output as function output.
+    return c_output
+    ```
+
+    Your `add_kernel.py` file should now look like this:
+
+    ```python
+    import nki
+    import nki.language as nl
+    import nki.isa as nisa
+
+    @nki.jit
+    def nki_tensor_add_kernel(a_input, b_input):
+        """
+        NKI kernel to compute element-wise addition of two input tensors.
+        """
+
+        # Check both input tensor shapes/dtypes are the same for element-wise operation.
+        assert a_input.shape == b_input.shape
+        assert a_input.dtype == b_input.dtype
+
+        # Check the first dimension's size to ensure it does not exceed on-chip
+        # memory tile size, since this simple kernel does not tile inputs.
+        assert a_input.shape[0] <= nl.tile_size.pmax
+
+        # Allocate space for the input tensors in SBUF and copy the inputs from HBM
+        # to SBUF with DMA copy.
+        a_tile = nl.ndarray(shape=a_input.shape, dtype=a_input.dtype, buffer=nl.sbuf)
+        nisa.dma_copy(dst=a_tile, src=a_input)
+
+        b_tile = nl.ndarray(shape=b_input.shape, dtype=b_input.dtype, buffer=nl.sbuf)
+        nisa.dma_copy(dst=b_tile, src=b_input)
+
+        # Allocate space for the result and use tensor_tensor to perform
+        # element-wise addition. Note: the first argument of 'tensor_tensor'
+        # is the destination tensor.
+        c_tile = nl.ndarray(shape=a_input.shape, dtype=a_input.dtype, buffer=nl.sbuf)
+        nisa.tensor_tensor(dst=c_tile, data1=a_tile, data2=b_tile, op=nl.add)
+
+        # Create a tensor in HBM and copy the result into HBM.
+        c_output = nl.ndarray(dtype=a_input.dtype, shape=a_input.shape, buffer=nl.shared_hbm)
+        nisa.dma_copy(dst=c_output, src=c_tile)
+
+        # Return kernel output as function output.
+        return c_output
+    ```
+  </Step>
+
+  <Step title="Create a PyTorch or JAX test program">
+    Create a test program as a Python script using either PyTorch or JAX.
+
+    <Tabs>
+      <Tab title="PyTorch">
+        Create a file called `test_program.py` with the following content.
+
+        ```python
+        import torch
+        import torch_neuronx
+        from add_kernel import nki_tensor_add_kernel
+
+        # Generate input tensors.
+        a = torch.ones((4, 3), dtype=torch.float16)
+        b = torch.ones((4, 3), dtype=torch.float16)
+
+        # Trace the kernel for Neuron.
+        trace = torch_neuronx.trace(nki_tensor_add_kernel, (a, b))
+
+        # Run the traced kernel.
+        c = trace(a, b)
+
+        # Print the result.
+        print(c)
+        ```
+
+        You create input tensors using PyTorch. Use `torch_neuronx.trace` to compile the kernel for the Neuron device, then call the traced function to run it. The `print` function prints the result to the console.
+      </Tab>
+
+      <Tab title="JAX">
+        Create a file called `test_program.py` with the following content.
+
+        ```python
+        import jax.numpy as jnp
+        from add_kernel import nki_tensor_add_kernel
+
+        # Generate the input tensors.
+        a = jnp.ones((4, 3), dtype=jnp.float16)
+        b = jnp.ones((4, 3), dtype=jnp.float16)
+
+        # Invoke the kernel to add the results.
+        c = nki_tensor_add_kernel(a, b)
+
+        # Print the result tensor.
+        print(c)
+        ```
+
+        You create input tensors using the `jax.numpy` library. Call `nki_tensor_add_kernel` to invoke the kernel. The `print` function prints the result to the console.
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+Now, confirm everything works.
+
+## Confirmation
+
+Confirm the success of the kernel by running the driver you created in step 8.
+
+```bash
+NEURON_PLATFORM_TARGET_OVERRIDE=trn3 python test_program.py
+```
+
+The `NEURON_PLATFORM_TARGET_OVERRIDE` environment variable sets the target architecture for compilation. In this example it's set to `trn3`, which creates a binary suitable for running on Trn3 machines. For Trn2, specify `trn2`.
+
+Whether you used PyTorch or JAX for the driver, you should see the following result:
+
+```text
+[[2. 2. 2.]
+ [2. 2. 2.]
+ [2. 2. 2.]
+ [2. 2. 2.]]
+```
+
+You'll also see some additional output depending on whether you used PyTorch or JAX.
+
+<Tabs>
+  <Tab title="PyTorch">
+    ```text
+    2026-Apr-13 01:46:31.0675 837617:837663 [2] int nccl_net_ofi_create_plugin(nccl_net_ofi_plugin_t**):219 CCOM WARN NET/OFI Failed to initialize rdma protocol
+    2026-Apr-13 01:46:31.0678 837617:837663 [2] int nccl_net_ofi_create_plugin(nccl_net_ofi_plugin_t**):354 CCOM WARN NET/OFI aws-ofi-nccl initialization failed
+    2026-Apr-13 01:46:31.0681 837617:837663 [2] ncclResult_t nccl_net_ofi_init_no_atexit_fini_v6(ncclDebugLogger_t):183 CCOM WARN NET/OFI Initializing plugin failed
+    2026-Apr-13 01:46:31.0683 837617:837663 [2] net_plugin.cc:97 CCOM WARN OFI plugin initNet() failed is EFA enabled?
+    .
+    Compiler status PASS
+    2026-04-13 01:46:33.000003: 837617 [INFO]: Compilation Successfully Completed for model.MODULE_9886333626096130500+70e3f644.hlo_module.pb
+    tensor([[2., 2., 2.],
+     [2., 2., 2.],
+     [2., 2., 2.],
+     [2., 2., 2.]], device='xla:0', dtype=torch.float16)
+    ```
+
+    <Note>
+      The CCOM warnings about OFI/EFA initialization are harmless on single-node instances without EFA networking and can be safely ignored.
+    </Note>
+  </Tab>
+
+  <Tab title="JAX">
+    ```text
+    WARNING:2026-04-13 01:56:40,630:jax._src.xla_bridge:901: Platform 'neuron' is experimental and not all JAX functionality may be correctly supported!
+    2026-Apr-13 01:56:47.0115 838811:838863 [3] int nccl_net_ofi_create_plugin(nccl_net_ofi_plugin_t**):219 CCOM WARN NET/OFI Failed to initialize rdma protocol
+    2026-Apr-13 01:56:47.0117 838811:838863 [3] int nccl_net_ofi_create_plugin(nccl_net_ofi_plugin_t**):354 CCOM WARN NET/OFI aws-ofi-nccl initialization failed
+    2026-Apr-13 01:56:47.0120 838811:838863 [3] ncclResult_t nccl_net_ofi_init_no_atexit_fini_v6(ncclDebugLogger_t):183 CCOM WARN NET/OFI Initializing plugin failed
+    2026-Apr-13 01:56:47.0122 838811:838863 [3] net_plugin.cc:97 CCOM WARN OFI plugin initNet() failed is EFA enabled?
+    [[2. 2. 2.]
+     [2. 2. 2.]
+     [2. 2. 2.]
+     [2. 2. 2.]]
+    ```
+
+    <Note>
+      The "Platform 'neuron' is experimental" warning and CCOM warnings are harmless and can be safely ignored.
+    </Note>
+  </Tab>
+</Tabs>
+
+Congratulations — you have your first NKI kernel written and running. If you encountered any issues, see the common issues section below.
+
+## Common issues
+
+- **`nki`, `jax`, `torch`, etc. library not found.** You may need to activate the PyTorch or JAX environment.
+- **No neuron device available.** You may not have the `neuron` kernel module loaded. Load it with `sudo modprobe neuron`.
+
+## Clean up
+
+When you're finished with this example, deactivate your `venv` with `deactivate` and remove both `add_kernel.py` and `test_program.py`.
+
+## Next steps
+
+Now that you've completed this quickstart, take your work and dive into other topics that build off of it.
+
+- [NKI Language Guide](/nki/get-started/nki-language-guide)
+- [NKI tutorials](/nki/guides/tutorials)
+
+## Further reading
+
+- [NKI API Reference Manual](/nki/api)
+- [NKI developer guides](/nki/guides)

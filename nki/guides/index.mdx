@@ -1,0 +1,102 @@
+---
+title: "NKI guides"
+description: "Guides for the AWS Neuron Kernel Interface (NKI), including architecture guides, tutorials for implementing and optimizing kernels, and how to use kernels with common frameworks."
+sidebarTitle: "Guides"
+keywords: ["NKI", "AWS Neuron", "Guides", "Tutorials", "how-to"]
+icon: "book"
+---
+
+This section provides hands-on tutorials for the Neuron Kernel Interface (NKI), demonstrating how to write custom kernels for AWS Trainium and Inferentia instances. These tutorials cover fundamental operations, advanced techniques, and distributed computing patterns using NKI.
+
+## Tutorials
+
+<Columns cols={2}>
+  <Card
+    title="Matrix multiplication"
+    href="/nki/guides/tutorials/matrix_multiplication"
+  >
+    Learn the fundamentals of implementing matrix multiplication in your NKI kernels.
+  </Card>
+
+  <Card
+    title="Transpose 2D"
+    href="/nki/guides/tutorials/transpose2d"
+  >
+    Implement efficient 2D matrix transpose operations using NKI.
+  </Card>
+
+  <Card
+    title="Average pooling 2D"
+    href="/nki/guides/tutorials/average_pool2d"
+  >
+    Create custom 2D average pooling kernels for computer vision workloads.
+  </Card>
+
+  <Card
+    title="Fused Mamba"
+    href="/nki/guides/tutorials/fused_mamba"
+  >
+    Implement fused Mamba state-space model kernels.
+  </Card>
+</Columns>
+
+## Architecture guides
+
+We recommend new NKI developers start with [Trainium/Inferentia2 architecture](/nki/guides/architecture/trainium_inferentia2_arch) before exploring newer NeuronDevice architecture.
+
+<Columns cols={1}>
+  <Card
+    title="Trainium/Inferentia2 architecture"
+    href="/nki/guides/architecture/trainium_inferentia2_arch"
+  >
+    Foundational architecture guide for understanding NeuronDevice basics.
+  </Card>
+</Columns>
+
+<Columns cols={2}>
+  <Card
+    title="Trainium2 architecture"
+    href="/nki/guides/architecture/trainium2_arch"
+  >
+    Architecture enhancements and improvements in the Trainium2 generation.
+  </Card>
+
+  <Card
+    title="Trainium3 architecture"
+    href="/nki/guides/architecture/trainium3_arch"
+  >
+    Latest architecture features and capabilities in Trainium3 devices.
+  </Card>
+</Columns>
+
+## How-to guides
+
+<Columns cols={2}>
+  <Card
+    title="Use the NKI CPU simulator"
+    href="/nki/guides/nki_simulator"
+  >
+    Develop and debug NKI kernels on your CPU with no hardware required.
+  </Card>
+
+  <Card
+    title="Insert NKI kernels into models"
+    href="/nki/guides/framework_custom_op"
+  >
+    Insert a NKI kernel as a custom operator into a PyTorch or JAX model.
+  </Card>
+
+  <Card
+    title="Use the NKI scheduling APIs"
+    href="/nki/guides/how-to-scheduling-apis"
+  >
+    Control instruction execution order using dependency edges and no-reorder blocks.
+  </Card>
+
+  <Card
+    title="Profile a NKI kernel"
+    href="/nki/guides/use-neuron-profile"
+  >
+    Profile NKI kernels using Neuron Explorer to analyze hardware-level performance.
+  </Card>
+</Columns>

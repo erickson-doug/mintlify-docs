@@ -1,0 +1,107 @@
+---
+title: "Transpose 2D"
+description: "Transpose a 3D tensor along two free-dimension axes using NKI, working with multi-dimensional memory access patterns on the NeuronCore."
+sidebarTitle: "Transpose 2D"
+icon: "arrows-left-right"
+---
+
+In this tutorial we transpose a tensor along two of its axes using NKI. In doing so, we learn about:
+
+- The NKI syntax and programming model
+- Multi-dimensional memory address patterns in NKI
+
+As background, there are two main types of transposition in NKI:
+
+1. Transposition between the partition-dimension axis and one of the free-dimension axes, which is achieved via the [`nki.isa.nc_transpose`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.isa.nc_transpose.html) instruction.
+2. Transposition between two axes on the free dimension, which is achieved via a `nki.language.copy` instruction, with indexing manipulation in the free axis to rearrange the data.
+
+In this example we'll focus on the second case. Consider a three-dimensional input tensor `[P, F1, F2]`, where the `P` axis is mapped to the different SBUF partitions and the `F1` and `F2` axes are flattened and placed in each partition, with `F1` as the major dimension. Our goal is to transpose the `F1` and `F2` axes with a parallel dimension `P`, which rearranges the data within each partition. The figure below illustrates the input and output tensor layouts.
+
+<Frame caption="Tensor F1:F2 transpose">
+  <img src="/images/nki/img/pm-index-2.png" alt="Tensor F1:F2 transpose layout" />
+</Frame>
+
+## PyTorch
+
+### Compute kernel
+
+<Card
+  title="transpose2d_nki_kernels.py"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/transpose2d/transpose2d_nki_kernels.py"
+  horizontal
+>
+  Full source for the Transpose2D NKI kernel (`NKI_EXAMPLE_33`).
+</Card>
+
+### Launch the kernel and test correctness
+
+To execute the kernel, we prepare tensors `a` and call `tensor_transpose2D_kernel_`.
+
+<Card
+  title="transpose2d_torch.py"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/transpose2d/transpose2d_torch.py"
+  horizontal
+>
+  Full PyTorch driver source (`NKI_EXAMPLE_34`).
+</Card>
+
+## JAX
+
+### Compute kernel
+
+We can reuse the same NKI compute kernel defined for PyTorch above — see [`transpose2d_nki_kernels.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/transpose2d/transpose2d_nki_kernels.py).
+
+### Launch the kernel and test correctness
+
+To execute the kernel, we prepare array `a` and call `tensor_transpose2D_kernel_`.
+
+<Card
+  title="transpose2d_jax.py"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/transpose2d/transpose2d_jax.py"
+  horizontal
+>
+  Full JAX driver source (`NKI_EXAMPLE_36`).
+</Card>
+
+<Note>
+  Pass `shape2D` as kwargs to pass the shape as a compile-time constant to the kernel function.
+</Note>
+
+## Download all source code
+
+Full source for the kernels and testing code discussed in this tutorial:
+
+- [`transpose2d_nki_kernels.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/transpose2d/transpose2d_nki_kernels.py) — NKI bare-metal implementation.
+- [`transpose2d_torch.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/transpose2d/transpose2d_torch.py) — PyTorch implementation. Also download `transpose2d_nki_kernels.py` into the same folder.
+- [`transpose2d_jax.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/transpose2d/transpose2d_jax.py) — JAX implementation. Also download `transpose2d_nki_kernels.py` into the same folder.
+
+You can also view the source code in the [nki_samples](https://github.com/aws-neuron/nki-samples/tree/main/src/nki_samples/tutorials/transpose2d/) repository on GitHub.
+
+### Example usage
+
+Run NKI bare-metal implementation:
+
+```bash
+python3 transpose2d_nki_kernels.py
+```
+
+Run PyTorch implementation:
+
+```bash
+python3 transpose2d_torch.py
+```
+
+Run JAX implementation:
+
+```bash
+python3 transpose2d_jax.py
+```
+
+## Related topics
+
+- [Average pooling 2D tutorial](/nki/guides/tutorials/average_pool2d)
+- [Matrix multiplication tutorial](/nki/guides/tutorials/matrix_multiplication)
+- [Tensor indexing on NKI](/nki/get-started/about/indexing-overview)

@@ -1,0 +1,192 @@
+---
+title: "Matrix multiplication"
+description: "Learn how to implement and optimize matrix multiplication kernels using NKI on AWS Neuron hardware, from basic implementation to advanced optimization techniques."
+sidebarTitle: "Matrix multiplication"
+keywords: ["Matrix Multiplication", "NKI", "Neuron", "Optimization", "TensorE"]
+icon: "calculator"
+---
+
+In this tutorial we start with a simple NKI matrix-multiplication kernel and optimize it step by step. In doing so, we learn about:
+
+- The NKI syntax and programming model
+- Layout, tiling, and memory-management considerations when performing matrix multiplication in NKI
+
+## Basic compute kernel
+
+<Frame caption="MxKxN matrix-multiplication visualization">
+  <img src="/images/nki/img/matrix-multiplication-views.png" alt="MxKxN matrix multiplication mapped from mathematical view to Tensor Engine and SRAM layout" />
+</Frame>
+
+The figure above illustrates how a simple matrix multiplication — `lhs [M, K] * rhs [K, N] = output [M, N]` — maps to the Tensor Engine (TensorE) and SRAMs from its original mathematical view. The PSUM partition dimension is rotated 90 degrees from the SBUF partition dimension solely for layout visualization. The copy preserves the `output` tile layout from PSUM to SBUF by copying data from each PSUM partition to the corresponding SBUF partition.
+
+The example below implements a compute kernel for a single-tile matrix multiplication. It computes a `64(M) x 128(K) x 512(N)` matrix multiplication operation.
+
+<Card
+  title="matrix_multiplication_nki_kernels.py"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_nki_kernels.py"
+  horizontal
+>
+  Full source for the basic matmul kernel (`NKI_EXAMPLE_16`) and all subsequent optimizations (`NKI_EXAMPLE_18`–`21`).
+</Card>
+
+In this example, we define the NKI kernel as `nki_matmul_basic_`:
+
+1. Define indices to access the LHS and RHS input tensors.
+2. To adhere to NKI's layout considerations, map the contraction axis of both LHS and RHS to the `P` dimension, which means loading LHS in transposed form.
+3. To adhere to NKI's tile-size considerations, limit the matmul instruction arguments to tiles of up to `[128, 128]` for LHS and `[128, 512]` for RHS.
+4. Use `nisa.dma_copy` to load the inputs from HBM tensors to SBUF tiles.
+5. Use `nisa.nc_matmul` to perform the matrix multiplication. Note that the LHS argument is transposed. Also note that the 64×128 dimension here actually under-utilizes TensorE, but it helps distinguish the M, K, and N dimensions for teaching purposes in this first code example.
+6. `nisa.nc_matmul` always writes its result to PSUM. Since `nisa.dma_copy` only moves data from SBUF to HBM, copy the multiplication result from PSUM back to SBUF using `nisa.tensor_copy`.
+
+We can then execute the kernel and verify correctness against the PyTorch implementation. We use `torch.allclose` to tolerate numerical error inherent to floating-point arithmetic.
+
+<Card
+  title="matrix_multiplication_torch.py"
+  icon="github"
+  href="https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_torch.py"
+  horizontal
+>
+  Full PyTorch driver source (`NKI_EXAMPLE_17` basic, `NKI_EXAMPLE_22` benchmarking).
+</Card>
+
+## Tiling matrix multiplications
+
+So far we've limited our matrix multiplication to the tile sizes allowed by NKI's tile-size and layout constraints. Next, we'll see how to handle larger matrix multiplications. Let's start with pseudo-code for tiling an `[M, K] @ [K, N]` matrix-multiplication. We assume the left-hand-side matrix (`[M, K]`) is already transposed to LHS_T (`[K, M]`) for optimal TensorE performance.
+
+```text
+# LHS_T: left-hand-side matmul argument (shape [K, M])
+# RHS:   right-hand-side matmul argument (shape [K, N])
+# RES:   matmul result (shape [M, N])
+
+# Tile LHS_T free dimension
+for m in range(0, M, 128):
+    # Tile RHS free dimension
+    for n in range(0, N, 512):
+        # Zero-out the accumulator buffer
+        accum = zeros((128, 512))
+        # Tile contraction dimension
+        for k in range(0, K, 128):
+            lhsT_tile = LHS_T[m : m+128, k : k+128]
+            rhs_tile = RHS[k : k+128, n : n+512]
+            accum += dot(lhsT_tile, rhs_tile)
+        RES[m : m+128, n : n+512] = accum
+```
+
+This form of tiling can be achieved in NKI; see `nki_matmul_tiled_` (`NKI_EXAMPLE_18`) in [`matrix_multiplication_nki_kernels.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_nki_kernels.py).
+
+A few notes about the code:
+
+```python
+psum_buf = nl.ndarray(..., buffer=nl.psum)
+
+# condition: an affine range loop
+for i in nl.affine_range(N):
+    # condition 3: add matmul results from TensorEngine
+    nisa.nc_matmul(psum_buf, stationary_tile, moving_tile)  # or nl.matmul
+```
+
+The PSUM-accumulation architecture feature is critical to achieve good performance from TensorEngine when the contraction dimension of the matmul is greater than 128.
+
+[`nl.affine_range`](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/generated/nki.language.affine_range.html) defines loop-level iterators — the recommended iterator type when the loop doesn't have loop-carried dependency. (Associative reductions aren't considered loop-carried dependencies in this context.) The first `nisa.nc_matmul` call overwrites the contents of `psum_buf`, and subsequent calls accumulate results into `psum_buf`.
+
+There's an alternative way to implement this tiled matrix-multiplication kernel using the SPMD programming model. We can use the SPMD model to launch `(M/128) x (N/512)` instances of the kernel to complete the innermost loop.
+
+## Optimization 1: removing redundant loads
+
+Currently, every `nisa.nc_matmul` is accompanied by two `nisa.dma_copy` calls in the inner loop, both of which move data from HBM to SBUF. Let's introduce a metric, **arithmetic intensity**, to help understand why this is problematic. The arithmetic intensity of a workload is defined as the number of computation operations performed per byte of data accessed from HBM on average. (We don't consider data accessed from SBUF in this metric because SBUF bandwidth is ~20× higher than HBM — high enough to sustain peak computation throughput in TensorE.)
+
+<Frame caption="Roofline model: the relationship between arithmetic intensity and performance">
+  <img src="/images/nki/img/roofline.png" alt="Roofline model showing memory-bound and compute-bound regions" />
+</Frame>
+
+The figure above shows the roofline model, which models the relationship between a workload's arithmetic intensity and its achievable performance on a given computing platform. To saturate TensorE in a NeuronCore-v2, the arithmetic intensity threshold of a workload is 222 FLOPs/byte for `bfloat16`. Inside the inner loop of `nki_matmul_tiled_`, accessing `lhsT_tile` and `rhs_tile` requires 160 KB of data read from HBM, while the `nisa.nc_matmul` call involves 16 MFLOPs. This leads to an arithmetic intensity of 102, which is significantly lower than the saturation threshold of 222. Therefore, `nki_matmul_tiled_` operates in the memory-bound region of the roofline model and under-utilizes TensorE. To make the best out of TensorE, we need to improve the arithmetic intensity of the matmul kernel.
+
+With NKI, programmers can control when and how to load data from HBM into SBUF and also perform computation. The upcoming steps demonstrate how to increase the arithmetic intensity of the matmul kernel using NKI, thereby maximizing the utilization of TensorE.
+
+First, we notice that in `nki_matmul_tiled_`, the same tiles from `lhsT` and `rhs` matrices are loaded more than once across different iterations of the inner loop. The following example reduces these redundant loads by hoisting them out of the innermost loop.
+
+<Frame caption="Memory pattern after hoisting loads out of the innermost loop">
+  <img src="/images/nki/img/mm-memory-pattern-after-load-hoisting.png" alt="Memory-access pattern after hoisting loads out of the innermost loop" />
+</Frame>
+
+See `nki_matmul_hoist_load` (`NKI_EXAMPLE_19`) in [`matrix_multiplication_nki_kernels.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_nki_kernels.py).
+
+## Optimization 2: blocking M and N dimension
+
+While hoisting the load out of the innermost loop eliminates some redundant loads, we can push this idea further to increase arithmetic intensity.
+
+Each time we load K elements from the MxK matrix stored in HBM, optimization 1 lets us utilize those same elements N different times. However, SBUF capacity is much higher than the K elements currently cached from optimization 1. We can load multiple K elements from the MxK matrix at a time, resulting in higher data reuse. This increases arithmetic intensity.
+
+Block size must balance two constraints: it should be large enough to saturate arithmetic intensity, yet small enough that all live blocks remain within SBUF capacity to avoid spilling, which causes performance regression.
+
+<Frame caption="Memory pattern after blocking free dimensions">
+  <img src="/images/nki/img/mm-memory-pattern-after-blocking-free.png" alt="Memory-access pattern after blocking the free dimensions" />
+</Frame>
+
+See `nki_matmul_block_free_dimension` (`NKI_EXAMPLE_20`) in [`matrix_multiplication_nki_kernels.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_nki_kernels.py).
+
+## Optimization 3: blocking M, N, and K dimension
+
+Blocking only the free dimensions and requiring the full partition dimension (K) to be loaded sets an upper limit on block size (M and N) due to limited SBUF capacity.
+
+Matrix multiply with shapes `[M, K] @ [K, N] = [M, N]` requires K multiplies and K additions (or K−1 for accumulation) for each element in the resulting `[M, N]` grid, totaling `2*K*M*N` FLOPs. It has to load `M*K + K*N + M*N` elements, resulting in arithmetic intensity `2*M*N*K / (2*(M*K + K*N + M*N))` for 2-byte data types like FP16 or BF16. Since the full K has to fit in memory for optimization 2, it limits M and N size for a block. Arithmetic intensity will be lower if any of M, N, or K is much smaller than the others.
+
+Blocking the partition dimension also results in calculating partial matrix multiplies in each block that have to be accumulated, resulting in additional HBM traffic if not handled carefully.
+
+<Frame caption="Memory pattern after blocking all dimensions">
+  <img src="/images/nki/img/mm-memory-pattern-after-blocking-all.png" alt="Memory-access pattern after blocking all three dimensions" />
+</Frame>
+
+With the blocking configuration in the code (16 tiles or 2,048 numbers in the M dimension; 2 tiles or 1,024 numbers in the N dimension; 8 tiles or 1,024 numbers in the K dimension), this computation has an arithmetic intensity of 683 FLOPs/byte (`2048*1024*1024 / (2048*1024 + 1024*1024)`). This is well above the threshold of 222.
+
+At the same time, this blocking configuration keeps all tensors within the SBUF limit as much as possible. With all matrices in BF16, `lhsT_tiles` requires 4 MB and `rhs_tiles` requires 2 MB of SBUF memory. `result_m_tiles` requires `4 * NUM_BLOCK_M` MB of SBUF memory, where `NUM_BLOCK_M` is `M // 2048`. So as long as M ≤ 8,192, the required SBUF memory is under the 24 MB budget (`4 + 2 + 4 * (8192 // 2048) == 22 MB`). When M grows beyond that, spilling and reloading of `result_m_tiles` happens, but the frequency is low enough that the computation can still be sufficient. Block size must balance two constraints: large enough to saturate arithmetic intensity, yet small enough that all live blocks remain within SBUF capacity to avoid spilling.
+
+We also use a contiguous N-block layout per M-tile to eliminate coalescing. Each result M-tile is allocated with shape `(TILE_M, TILES_IN_BLOCK_N, TILE_N)` instead of separate `(TILE_M, TILE_N)` tiles. Because the N-block tiles are already contiguous in the free dimension, we can later reshape to `(TILE_M, BLOCK_N)` and issue a single large `nisa.dma_copy` for SBUF→HBM eviction without needing a `nisa.tensor_copy()` coalescing step to remove work from VectorE. Furthermore, by splitting the N-block into individual M-tiles, the compiler can pipeline `memset(0)`, matmul, `tensor_tensor` accumulation, and SBUF→HBM DMA eviction on M-tile granularity, overlapping all stages.
+
+See `nki_matmul_fully_optimized` (`NKI_EXAMPLE_21`) in [`matrix_multiplication_nki_kernels.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_nki_kernels.py).
+
+## Testing correctness and benchmarking
+
+Test correctness of the kernels by comparing the result with `torch.matmul` using `torch.allclose`. See the test driver (`NKI_EXAMPLE_22`) in [`matrix_multiplication_torch.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_torch.py).
+
+Expected output from the test:
+
+```text
+Checking correctness of nki_matmul_tiled
+NKI and Torch match
+Checking correctness of nki_matmul_hoist_load
+NKI and Torch match
+Checking correctness of nki_matmul_block_free_dimension
+NKI and Torch match
+Checking correctness of nki_matmul_fully_optimized
+NKI and Torch match
+```
+
+## Download all source code
+
+- [`matrix_multiplication_nki_kernels.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_nki_kernels.py) — all matrix-multiplication NKI kernels.
+- [`matrix_multiplication_torch.py`](https://github.com/aws-neuron/nki-samples/blob/main/src/nki_samples/tutorials/matrix_multiplication/matrix_multiplication_torch.py) — PyTorch implementation.
+
+You can also view the source code in the [nki_samples](https://github.com/aws-neuron/nki-samples/tree/main/src/nki_samples/tutorials/matrix_multiplication/) repository on GitHub.
+
+### Example usage
+
+Run benchmarking of different NKI kernels:
+
+```bash
+python3 matrix_multiplication_nki_kernels.py
+```
+
+Run the PyTorch implementation to validate the NKI results:
+
+```bash
+python3 matrix_multiplication_torch.py
+```
+
+## Related topics
+
+- [2D transpose tutorial](/nki/guides/tutorials/transpose2d)
+- [Kernel optimization tutorial](/nki/guides/tutorials/kernel-optimization)
+- [Trainium/Inferentia2 architecture](/nki/guides/architecture/trainium_inferentia2_arch)
+- [Tiling overview](/nki/get-started/about/tiling-overview)
