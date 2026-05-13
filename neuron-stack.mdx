@@ -12,22 +12,21 @@ Use this as the map for the rest of the docs: if you know which layer you're wor
 ## The stack, at a glance
 
 ```mermaid
-%%{init: {'flowchart': {'defaultRenderer': 'elk'}}}%%
 flowchart TB
   subgraph ENTRY["User-facing entry points"]
     direction LR
-    E1["vLLM on Neuron<br/>OpenAI API<br/>offline + online"]
-    E2["Training apps<br/>PyTorch / JAX scripts<br/>Hugging Face, Lightning"]
-    E3["Inference apps<br/>PyTorch scripts<br/>HF pipelines"]
-    E4["Custom kernel authors<br/>performance engineers"]
+    E1["vLLM on Neuron<br>OpenAI API<br>offline + online"]
+    E2["Training apps<br>PyTorch / JAX scripts<br>Hugging Face, Lightning"]
+    E3["Inference apps<br>PyTorch scripts<br>HF pipelines"]
+    E4["Custom kernel authors<br>performance engineers"]
   end
 
   subgraph SERVING["Serving + distributed libraries"]
     direction TB
-    S1["vllm-neuron plugin<br/>vLLM on Neuron V1"]
-    S2["NxD Training<br/>train loops, sharding,<br/>checkpointing"]
-    S3["NxD Inference<br/>TP / EP / CP / PP<br/>continuous batching<br/>speculative decoding<br/>quantization, vLLM integration"]
-    S4["NxD Core<br/>distributed primitives<br/>sharded state dict<br/>comms scheduling"]
+    S1["vllm-neuron plugin<br>vLLM on Neuron V1"]
+    S2["NxD Training<br>train loops, sharding,<br>checkpointing"]
+    S3["NxD Inference<br>TP / EP / CP / PP<br>continuous batching<br>speculative decoding<br>quantization, vLLM integration"]
+    S4["NxD Core<br>distributed primitives<br>sharded state dict<br>comms scheduling"]
     S1 --> S3
     S2 --> S4
     S3 --> S4
@@ -35,24 +34,24 @@ flowchart TB
 
   subgraph FRAMEWORKS["ML framework integrations"]
     direction LR
-    F1["Native PyTorch on Neuron<br/>TorchNeuron<br/>eager + torch.compile"]
-    F2["PyTorch NeuronX<br/>torch-neuronx<br/>XLA lowering<br/>FSDP / DDP / TP"]
-    F3["JAX NeuronX<br/>jax-neuronx via XLA"]
+    F1["Native PyTorch on Neuron<br>TorchNeuron<br>eager + torch.compile"]
+    F2["PyTorch NeuronX<br>torch-neuronx<br>XLA lowering<br>FSDP / DDP / TP"]
+    F3["JAX NeuronX<br>jax-neuronx via XLA"]
   end
 
   subgraph LOWLEVEL["Low-level programming surface"]
     direction LR
-    L1["NKI<br/>@nki.jit<br/>tile-level Python,<br/>NumPy-like"]
-    L2["NKI Library<br/>attention, MoE, RoPE,<br/>RMSNorm-Quant, QKV, Cumsum"]
-    L3["Neuron C++ Custom Operators<br/>on-device C++ ops<br/>registered with frameworks"]
+    L1["NKI<br>@nki.jit<br>tile-level Python<br>NumPy-like"]
+    L2["NKI Library<br>attention, MoE, RoPE<br>RMSNorm-Quant, QKV, Cumsum"]
+    L3["Neuron C++ Custom Operators<br>on-device C++ ops<br>registered with frameworks"]
     L2 --> L1
   end
 
   subgraph COMPEXEC["Compile + execute"]
     direction TB
-    C1["Neuron Graph Compiler<br/>neuronx-cc (Inf2, Trn*)<br/>neuron-cc (Inf1, legacy)"]
-    C2["Neuron Runtime Library<br/>loads NEFF<br/>model, memory, scheduling"]
-    C3["Neuron Collectives<br/>all_reduce, all_gather,<br/>reduce_scatter, all_to_all"]
+    C1["Neuron Graph Compiler<br>neuronx-cc for Inf2 and Trainium<br>neuron-cc for Inf1 legacy"]
+    C2["Neuron Runtime Library<br>loads NEFF<br>model, memory, scheduling"]
+    C3["Neuron Collectives<br>all_reduce, all_gather<br>reduce_scatter, all_to_all"]
     C1 -->|NEFF| C2
     C2 --> C3
   end
@@ -60,9 +59,9 @@ flowchart TB
   subgraph HARDWARE["Kernel driver + hardware"]
     direction TB
     D1["Neuron Driver (kernel)"]
-    D2["Inf1<br/>NeuronCores v1"]
-    D3["Inf2<br/>NeuronCores v2"]
-    D4["Trn1 / Trn2 / Trn3<br/>NeuronCores v2 / v3"]
+    D2["Inf1<br>NeuronCores v1"]
+    D3["Inf2<br>NeuronCores v2"]
+    D4["Trn1 / Trn2 / Trn3<br>NeuronCores v2 / v3 / v4"]
     D1 --> D2
     D1 --> D3
     D1 --> D4
@@ -81,7 +80,7 @@ flowchart TB
   F1 --> L1
   F2 --> L1
   F3 --> L1
-  S3 -. uses .-> L2
+  S3 -.-> L2
 
   L1 --> C1
   L3 --> C1
@@ -153,17 +152,21 @@ Different NKI features and performance characteristics apply to different hardwa
 A few components don't sit in a single layer — they observe or package the others.
 
 ```mermaid
-%%{init: {'flowchart': {'defaultRenderer': 'elk'}}}%%
 flowchart LR
-  T1["Neuron Explorer<br/>profiler, AI recommendations,<br/>source / tensor / database viewers"]
-  T2["Neuron system tools<br/>neuron-ls, neuron-top,<br/>neuron-monitor"]
-  T3["Neuron DLAMI + DLC<br/>EC2, EKS, ECS,<br/>SageMaker, ParallelCluster"]
-  T4["Neuron Agentic Development<br/>agents + skills for NKI authoring,<br/>debugging, profiling"]
+  T1["Neuron Explorer<br>profiler, AI recommendations<br>source / tensor / database viewers"]
+  T2["Neuron system tools<br>neuron-ls, neuron-top<br>neuron-monitor"]
+  T3["Neuron DLAMI + DLC<br>EC2, EKS, ECS<br>SageMaker, ParallelCluster"]
+  T4["Neuron Agentic Development<br>agents + skills for NKI authoring<br>debugging, profiling"]
 
-  T1 -. observes .-> STACK["Every layer"]
-  T2 -. observes .-> DR["Driver + runtime"]
-  T3 -. packages .-> ALL["Complete SDK + frameworks"]
-  T4 -. assists .-> AUTHOR["Kernel authors + developers"]
+  STACK["Every layer"]
+  DR["Driver + runtime"]
+  ALL["Complete SDK + frameworks"]
+  AUTHOR["Kernel authors + developers"]
+
+  T1 -.->|observes| STACK
+  T2 -.->|observes| DR
+  T3 -.->|packages| ALL
+  T4 -.->|assists| AUTHOR
 ```
 
 - **[Neuron Explorer](/tools/neuron-explorer)** — the unified profiling and optimization suite. AI-driven recommendations, hierarchy and source viewers, tensor and database viewers. Spans frameworks, NKI, compiler, and runtime.
