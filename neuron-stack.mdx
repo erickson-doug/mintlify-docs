@@ -35,7 +35,7 @@ flowchart TB
 
   subgraph FRAMEWORKS["ML framework integrations"]
     direction LR
-    F1["Native PyTorch on Neuron<br/>TorchNeuron<br/>PrivateUse1 backend<br/>eager + torch.compile"]
+    F1["Native PyTorch on Neuron<br/>TorchNeuron<br/>eager + torch.compile"]
     F2["PyTorch NeuronX<br/>torch-neuronx<br/>XLA lowering<br/>FSDP / DDP / TP"]
     F3["JAX NeuronX<br/>jax-neuronx via XLA"]
   end
@@ -116,7 +116,7 @@ This layer provides the training loops, inference servers, and distributed primi
 
 This layer is the PyTorch or JAX device backend. It translates framework operations into something the compiler can ingest.
 
-- **[Native PyTorch on Neuron (TorchNeuron)](/frameworks/torch/pytorch-native-overview)** — a PrivateUse1 device backend for PyTorch that supports eager execution and `torch.compile`. Existing PyTorch code runs with minimal changes — primarily replacing `cuda` with `neuron`.
+- **[Native PyTorch on Neuron (TorchNeuron)](/frameworks/torch/pytorch-native-overview)** — a Neuron-specific backend for PyTorch that supports eager execution and `torch.compile`. Existing PyTorch code runs with minimal changes — primarily replacing `cuda` with `neuron`.
 - **[PyTorch NeuronX (`torch-neuronx`)](/frameworks/torch)** — the XLA-based PyTorch integration. Lowers PyTorch graphs to XLA / HLO and compiles through `neuronx-cc`. Supports FSDP, DDP, and tensor parallelism.
 - **[JAX NeuronX](/frameworks/jax)** — the XLA-based JAX integration (`jax-neuronx`). Compiles JAX programs to NEFF via XLA.
 
