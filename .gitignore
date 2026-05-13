@@ -1,0 +1,16 @@
+# Ignore directories whose names start with "." at any depth.
+# (Files starting with "." — .gitignore, .mintignore, .readthedocs.yml, etc. —
+# are still tracked; only directories are ignored here.)
+#
+# Covers .kiro/ (local IDE + steering state), .vscode/, .idea/, .venv/,
+# and any other tool-specific dotdir.
+.*/
+
+# Exceptions: dotdirs we DO want tracked.
+!.github/
+
+# Node / Mintlify tooling
+node_modules/
+
+# macOS Finder metadata — never push this.
+.DS_Store

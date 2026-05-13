@@ -1,0 +1,11 @@
+# Example pytorch neuron container
+# To build:
+#    docker build . -f Dockerfile.pt -t neuron-container:pytorch
+# To run on EC2 Inf1 instances with AWS DLAMI:
+#    docker run -it --net=host --device=/dev/neuron0 neuron-container:pytorch
+
+# You can find the latest Pytorch Training Image here - https://gallery.ecr.aws/neuron/pytorch-training-neuronx
+FROM public.ecr.aws/neuron/pytorch-training-neuronx:2.9.0-neuronx-py310-sdk2.27.0-ubuntu24.04
+RUN mkdir -p /opt/ml
+COPY model.py /opt/ml/model.py
+COPY mlp_train.py /opt/ml/mlp_train.py 

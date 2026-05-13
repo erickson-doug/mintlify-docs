@@ -1,0 +1,5 @@
+
+.. card:: MxNet Neuron (``mxnet-neuron``) Setup for  Inf1 Instances
+            :link: setup-mxnet-neuron
+            :link-type: ref
+            :class-body: sphinx-design-class-title-small

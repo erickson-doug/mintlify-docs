@@ -1,0 +1,81 @@
+.. _pytorch-neuronx-install:
+
+
+.. meta::
+   :description: Install PyTorch NeuronX on AWS Trainium and Inferentia instances
+   :keywords: AWS Neuron, Inferentia, PyTorch, Trainium, setup, torch-neuronx, install, DLAMI, pip
+   :date-modified: 2026-03-30
+
+
+Install PyTorch NeuronX 
+========================
+
+.. contents:: Table of Contents
+   :local:
+   :depth: 2
+
+
+Develop on AWS ML accelerator instance
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Select the PyTorch version and AMI type tabs below to get the installation commands for your environment.
+
+.. tab-set::
+
+    .. tab-item:: PyTorch 1.13.1
+
+        .. tab-set::
+
+            .. tab-item:: Amazon Linux 2 DLAMI Base
+
+                .. include :: /setup/install-templates/trn1/dlami-notes.rst
+                    :start-line: 13
+                    :end-line: 18
+
+                .. include :: /src/helperscripts/installationScripts/python_instructions.txt
+                    :start-line: 8
+                    :end-line: 9
+
+            .. tab-item:: Ubuntu 20 DLAMI Base
+
+                .. include :: /setup/install-templates/trn1/dlami-notes.rst
+                    :start-line: 19
+                    :end-line: 24
+
+                .. include :: /src/helperscripts/installationScripts/python_instructions.txt
+                    :start-line: 11
+                    :end-line: 12
+
+            .. tab-item:: Amazon Linux 2 DLAMI Pytorch
+
+                .. include :: /setup/install-templates/trn1/dlami-notes.rst
+                    :start-line: 25
+                    :end-line: 29
+
+                .. include :: /src/helperscripts/installationScripts/python_instructions.txt
+                    :start-line: 50
+                    :end-line: 51
+
+            
+
+            .. tab-item:: Ubuntu 20 DLAMI Pytorch
+
+                .. include :: /setup/install-templates/trn1/dlami-notes.rst
+                    :start-line: 30
+                    :end-line: 35
+
+                .. include :: /src/helperscripts/installationScripts/python_instructions.txt
+                    :start-line: 53
+                    :end-line: 54
+
+            .. tab-item:: Amazon Linux 2
+
+                .. include :: /setup/install-templates/trn1/dlami-notes.rst
+                    :start-line: 1
+                    :end-line: 3
+
+            .. tab-item:: Ubuntu 20
+
+                .. include :: /setup/install-templates/trn1/dlami-notes.rst
+                    :start-line: 4
+                    :end-line: 6

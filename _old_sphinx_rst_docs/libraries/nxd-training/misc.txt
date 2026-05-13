@@ -1,0 +1,2 @@
+* :ref:`nxd-training_rn`
+* :ref:`nxdt_known_issues`

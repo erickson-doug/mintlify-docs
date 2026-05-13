@@ -1,0 +1,2 @@
+* :ref:`neuronx_distributed_developer_guide_training`
+* :ref:`neuronx_distributed_developer_guide_inference`

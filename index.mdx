@@ -1,133 +1,190 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
-icon: 'star'
+title: "AWS Neuron Documentation"
+description: "AWS Neuron SDK enables high-performance deep learning and generative AI on AWS Inferentia and Trainium instances. Get started with native PyTorch, vLLM, NKI kernels, and AI-driven optimization with Neuron Explorer."
+icon: "house"
 ---
 
-## Setting up
-
-Get your documentation site up and running in minutes.
+[AWS Neuron](/about-neuron/what-is-neuron) is the software development kit for deep learning and generative AI on [AWS Inferentia](https://aws.amazon.com/ai/machine-learning/inferentia/) and [AWS Trainium](https://aws.amazon.com/ai/machine-learning/trainium/) instances. Neuron supports multiple development paths: serving large language models with vLLM, training and inference with PyTorch and JAX, authoring custom kernels with NKI, and direct use of the Neuron Graph Compiler and Runtime.
 
 <Card
-  title="Start here"
+  title="Current release: Neuron 2.30.0"
+  icon="tag"
+  href="/release-notes/2.30.0"
+>
+  **Released May 21, 2026.** See what's new, including release highlights, supported versions, and upgrade guidance.
+</Card>
+
+## Who Neuron is for
+
+- **ML engineers deploying production models.** Deploy prepared [Neuron Deep Learning AMIs (DLAMIs)](/dlami) and [Deep Learning Containers (DLCs)](/containers) on Amazon EC2 Trainium and Inferentia instances. Start with the [DLAMI setup guide](/dlami) or the [DLC quickstart](/containers/get-started/quickstart-configure-deploy-dlc).
+  - **Serving LLMs.** Use vLLM on Neuron to serve open-source LLMs with minimal code changes. Start with the [online serving quickstart](/libraries/nxd-inference/vllm/quickstart-vllm-online-serving) or [offline serving quickstart](/libraries/nxd-inference/vllm/quickstart-vllm-offline-serving).
+- **ML researchers and model developers.** Use native PyTorch on Trainium with eager mode, `torch.compile`, and standard distributed APIs. Start with [Native PyTorch on Neuron](/frameworks/torch/pytorch-native-overview).
+- **Performance engineers optimizing kernels.** Use NKI to write custom kernels with direct NeuronCore access, or pick from the NKI Library's pre-optimized kernels. Start with the [NKI quickstart](/nki/get-started/quickstart-implement-run-kernel) and [NKI Library](/nki/library).
+
+## Start here
+
+Pick the task that matches what you want to do.
+
+<Card
+  title="Get started with a Neuron DLAMI and PyTorch"
   icon="rocket"
-  href="/quickstart"
+  href="/dlami"
   horizontal
 >
-  Follow our three step quickstart guide.
+  Launch a Trainium or Inferentia EC2 instance with a pre-configured **Neuron Deep Learning AMI (DLAMI)** and PyTorch. The DLAMI bundles the Neuron SDK, framework virtual environments (PyTorch, JAX, vLLM), and the system tools — no manual install required. See [Install PyTorch via Deep Learning AMI](/setup/pytorch/dlami) to get started.
 </Card>
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<Columns cols={3}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Serve a large language model"
+    icon="server"
+    href="/libraries/nxd-inference/vllm"
   >
-    Edit your docs locally and preview them in real time.
+    Run LLM inference on Trainium and Inferentia with **vLLM on Neuron**. Supports OpenAI-compatible APIs, continuous batching, and speculative decoding. See the [offline](/libraries/nxd-inference/vllm/quickstart-vllm-offline-serving) or [online](/libraries/nxd-inference/vllm/quickstart-vllm-online-serving) serving quickstart.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
 
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
   <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
+    title="Train a model with PyTorch"
+    icon="chart-line"
+    href="/frameworks/torch/pytorch-native-overview"
   >
-    Use MDX to style your docs pages.
+    Use **native PyTorch on Trainium** (TorchNeuron) with eager mode, `torch.compile`, and the standard distributed APIs (FSDP, DTensor, DDP). Existing PyTorch code runs with minimal changes; primarily swap `cuda` for `neuron` on your tensors.
   </Card>
+
   <Card
-    title="Code samples"
+    title="Write custom NKI kernels"
     icon="code"
-    href="/essentials/code"
+    href="/nki/get-started/quickstart-implement-run-kernel"
   >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+    Program NeuronCores directly with **NKI** when you need finer control than framework-level compilation provides. NKI offers tile-level programming with Python and NumPy-like syntax, and ships with a library of pre-optimized kernels (attention, MoE, and others).
   </Card>
 </Columns>
 
-## Make your content agent ready
+## Neuron SDK organization
 
-Make your docs work for humans and AI agents alike.
+The Neuron SDK includes:
+
+- **Frameworks** — Native PyTorch on Trainium (TorchNeuron), PyTorch NeuronX (`torch-neuronx`), and JAX NeuronX.
+- **Serving integrations** — vLLM on Neuron V1 (via the `vllm-neuron` plugin) and the earlier vLLM integration through NxD Inference, both for OpenAI-compatible LLM serving.
+- **NeuronX Distributed (NxD) libraries** — PyTorch libraries for distributed training and inference, including NxD Training, NxD Inference, and NxD Core.
+- **Neuron Kernel Interface (NKI)** — Python programming interface for custom kernels on NeuronCores, plus the NKI Library of pre-optimized kernels.
+- **Neuron Graph Compiler** (`neuronx-cc`) — Compiles model graphs and NKI kernels into Neuron Executable File Format (NEFF) files.
+- **Neuron Runtime** — Loads NEFFs and executes them on NeuronCores, handling device allocation, memory management, and collective communications.
+- **Developer tools** — Neuron Explorer and the Neuron system tools for profiling and debugging across every component.
 
 <Columns cols={2}>
-  <Card
-    title="Prompt component"
-    icon="robot"
-    href="/agent-ready/prompt"
-  >
-    Embed shareable AI prompts readers can copy or open in Cursor.
+  <Card title="Frameworks and serving">
+    Write training and inference code with PyTorch or JAX. Serve LLMs with vLLM on Neuron.
+
+    - [Native PyTorch on Neuron](/frameworks/torch/pytorch-native-overview)
+    - [PyTorch NeuronX (torch-neuronx)](/frameworks/torch) · [JAX NeuronX](/frameworks/jax)
+    - [vLLM on Neuron](/libraries/nxd-inference/vllm)
   </Card>
-  <Card
-    title="Visibility"
-    icon="eye"
-    href="/agent-ready/visibility"
-  >
-    Show different content to humans and agents reading your docs.
+
+  <Card title="NKI — Neuron Kernel Interface">
+    Programming interface for custom kernels on NeuronCores. Used by the modern framework and serving integrations. Ships with a library of pre-optimized kernels.
+
+    - [Get started with NKI](/nki/get-started) · [Language guide](/nki/get-started/nki-language-guide)
+    - [NKI Library](/nki/library) · [NKI API reference](/nki/api)
+    - [NKI tutorials](/nki/guides/tutorials) · [NKI deep dives](/nki/deep-dives)
   </Card>
-  <Card
-    title="Contextual menu"
-    icon="bolt"
-    href="/agent-ready/contextual"
-  >
-    Give readers one-click access to Claude, ChatGPT, Cursor, and more.
+
+  <Card title="NeuronX Distributed (NxD) libraries">
+    PyTorch libraries for distributed training and inference on Neuron. Provide reference model implementations, sharding strategies (tensor, expert, context, pipeline parallelism), and distributed checkpointing. NxD Inference integrates selected NKI kernels for performance-critical operations.
+
+    - [NxD Training](/libraries/nxd-training) · [NxD Inference](/libraries/nxd-inference)
+    - [NxD Core (Training)](/libraries/neuronx-distributed/index-training) · [NxD Core (Inference)](/libraries/neuronx-distributed/index-inference)
   </Card>
-  <Card
-    title="AI coding tools"
-    icon="wand-magic-sparkles"
-    href="/ai-tools/claude-code"
-  >
-    Set up Claude Code, Cursor, or Windsurf with Mintlify's skill.
+
+  <Card title="Neuron Graph Compiler and Runtime">
+    The compiler (`neuronx-cc`) transforms model graphs into NEFF files. The runtime loads NEFFs and executes them on NeuronCores, handling device allocation, memory management, and collective communications. Both framework graphs and NKI kernels compile to NEFF.
+
+    - [Neuron Graph Compiler](/compiler) · [Compiler error codes](/compiler/error-codes)
+    - [Neuron Runtime](/neuron-runtime) · [Collectives](/neuron-runtime/about/collectives)
+    - [Neuron C++ Custom Operators](/neuron-customops)
   </Card>
 </Columns>
 
-## Need inspiration?
+## Deployment and tools support
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Columns cols={3}>
+  <Card
+    title="Neuron Explorer"
+    icon="chart-simple"
+    href="/tools/neuron-explorer"
+  >
+    Profiling and optimization tool with support for framework, NKI, compiler, and runtime workloads. Covers every Neuron SDK component area.
+  </Card>
+
+  <Card
+    title="Neuron Agentic Development"
+    icon="robot"
+    href="/about-neuron/agentic-development-overview"
+  >
+    Open-source AI agents and skills for NKI kernel authoring, debugging, profiling, and analysis. Runs inside Claude Code, Kiro, and other agentic IDEs.
+  </Card>
+
+  <Card
+    title="Deploy on AWS"
+    icon="cloud-arrow-up"
+    href="/devflows"
+  >
+    Pre-configured [DLAMIs](/dlami) and [DLCs](/containers) for EC2, EKS, ECS, SageMaker, and ParallelCluster.
+  </Card>
+</Columns>
+
+## Learn more
+
+<Columns cols={3}>
+  <Card
+    title="What is AWS Neuron?"
+    icon="circle-info"
+    href="/about-neuron/what-is-neuron"
+  >
+    Background on Inferentia, Trainium, and the Neuron SDK.
+  </Card>
+
+  <Card
+    title="Release notes"
+    icon="list"
+    href="/release-notes"
+  >
+    Component-by-component release notes for every Neuron SDK version.
+  </Card>
+
+  <Card
+    title="Open source and contribute"
+    icon="github"
+    href="/about-neuron/oss"
+  >
+    Public GitHub repositories, contribution guidelines, and source for TorchNeuron, NKI Library, NKI Samples, vLLM Neuron, and Neuron Agentic Development.
+  </Card>
+
+  <Card
+    title="News and blogs"
+    icon="newspaper"
+    href="/about-neuron/news-and-blogs"
+  >
+    Feature announcements, technical deep dives, and customer stories.
+  </Card>
+
+  <Card
+    title="FAQ and troubleshooting"
+    icon="circle-question"
+    href="/about-neuron/faq"
+  >
+    Common questions and solutions for Neuron SDK issues.
+  </Card>
+
+  <Card
+    title="Archived documentation"
+    icon="box-archive"
+    href="/archive"
+  >
+    Reference material for MXNet Neuron, TensorFlow Neuron, torch-neuron (Inf1), and other legacy components.
+  </Card>
+</Columns>
+
+---
+
+*AWS and the AWS logo are trademarks of Amazon Web Services, Inc. or its affiliates. All rights reserved.*

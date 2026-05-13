@@ -1,0 +1,220 @@
+<form id="search-form" class="bd-search d-flex align-items-center" action="{{ pathto('search') }}" method="get"> 
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder='Default Search'
+         aria-label='Default Search'
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+
+<div class="search-engine-toggle">
+  <span class="toggle-label"><b>Search Engine:</b></span>
+  <span class="toggle-option" id="default-option" style="font-weight: bold; color: #3cba54;">Default</span> 
+  <label class="switch">
+    <input type="checkbox" id="search-type">
+    <span class="slider round"></span>
+  </label>
+  <span class="toggle-option" id="google-option">Google</span>
+</div>
+
+
+<script>
+  const searchForm = document.getElementById('search-form');
+  const searchFormType = document.getElementById('search-type');
+  const searchFormInput = searchForm.querySelector('input[type="search"]');
+  const defaultOption = document.getElementById('default-option');
+  const googleOption = document.getElementById('google-option');
+
+
+
+  // Add the submit event listener for Default search
+  searchForm.addEventListener('submit', handleFormSubmit1);
+
+  // Load the saved state from localStorage
+  const savedState = localStorage.getItem('searchFormType');
+
+
+  if (savedState === 'google') {
+    searchFormType.checked = true;
+    searchForm.action = "{{ pathto('search-google') }}";
+    defaultOption.style.fontWeight = 'normal';
+    defaultOption.style.color = 'initial';
+    googleOption.style.fontWeight = 'bold';
+    googleOption.style.color = '#2196F3';
+    searchFormInput.placeholder = "Google Search";
+    searchFormInput.setAttribute("aria-label", "Google Search");
+
+    //lastSearchEngine = 'google';
+
+
+  } else {
+    // Default state (or if savedState is null)
+    searchFormType.checked = false; 
+    searchForm.action = "{{ pathto('search') }}";
+    defaultOption.style.fontWeight = 'bold';
+    defaultOption.style.color = '#3cba54';
+    googleOption.style.fontWeight = 'normal';
+    googleOption.style.color = 'initial';
+    searchFormInput.placeholder = "Default Search";
+    searchFormInput.setAttribute("aria-label", "Default Search"); 
+
+    //lastSearchEngine = 'default';
+  }
+
+
+  searchFormType.addEventListener('change', () => {
+    if (searchFormType.checked) {
+      searchForm.action = "{{ pathto('search-google') }}";
+
+      defaultOption.style.fontWeight = 'normal'; 
+      defaultOption.style.color = 'initial'; 
+      googleOption.style.fontWeight = 'bold'; 
+      googleOption.style.color = '#2196F3'; 
+
+      searchFormInput.placeholder = "Google Search";
+      searchFormInput.setAttribute("aria-label", "Google Search");
+      localStorage.setItem('searchFormType', 'google');
+    } else {
+      searchForm.action = "{{ pathto('search') }}"; 
+
+      defaultOption.style.fontWeight = 'bold'; 
+      defaultOption.style.color = '#3cba54'; 
+      googleOption.style.fontWeight = 'normal';
+      googleOption.style.color = 'initial';
+
+      searchFormInput.placeholder = "Default Search";
+      searchFormInput.setAttribute("aria-label", "Default Search"); 
+      localStorage.setItem('searchFormType', 'default');
+    }
+
+    // Update lastSearchEngine when switching search engines
+    lastSearchEngine = searchFormType.checked ? 'google' : 'default';
+
+    // Focus on the search input and set its value to the last query
+    //searchFormInput.focus();
+    //searchFormInput.value = localStorage.getItem('lastSearchQuery');
+  });
+
+
+
+   // Function to handle form submission for Default search
+   function handleFormSubmit1(event) {
+
+    const lastSearchEngine = localStorage.getItem('lastSearchEngine');
+    const lastSearchQuery = localStorage.getItem('lastSearchQuery');
+    const currrentQuery = searchFormInput.value;
+    const currentSearchEngine = searchFormType.checked ? 'google' : 'default';
+
+    console.log("[PST]: Form submitted");
+    // Check if the current URL is the search page
+
+    // If in search result pages, somehow pathto is equal to #
+    if (("{{ pathto('search') }}" === '#') || ("{{ pathto('search-google') }}" === '#')) {
+        if (
+          lastSearchQuery === currrentQuery &&
+          lastSearchEngine === currentSearchEngine
+        ) {
+          event.preventDefault();
+          console.log("[PST]: Form - preventing submission, query and engine are the same");
+    
+        }    else {
+        console.log("[PST]: Form - allowing submission, query or engine is different");
+        const url = `${searchForm.action}?q=${encodeURIComponent(currrentQuery)}`;
+        window.location.href = url;
+
+        } 
+    }
+
+    localStorage.setItem('lastSearchQuery', currrentQuery);
+    localStorage.setItem('lastSearchEngine', currentSearchEngine);
+    // Focus on the search input and set its value to the last query
+    searchFormInput.focus();
+    searchFormInput.value = currrentQuery;    
+}
+
+
+</script>
+
+<style>
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 35px; 
+  height: 18px; 
+}
+
+.switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #3cba54;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px; 
+  width: 14px; 
+  left: 2px; 
+  bottom: 2px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(19px); 
+  -ms-transform: translateX(19px);
+  transform: translateX(19px);
+}
+
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+.search-engine-toggle {
+  display: flex;
+  align-items: center; 
+  font-size: 80%; 
+}
+
+.toggle-label {
+  margin-right: 5px; 
+}
+
+.toggle-option {
+  margin-right: 5px; 
+}
+
+#google-option {
+  margin-left: 5px; 
+}
+</style>

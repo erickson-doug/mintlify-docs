@@ -1,0 +1,5 @@
+.. note::
+
+  If you are facing a connectivity issue during the model loading process on a Trn1 instance with Ubuntu, that could probably be because of Ubuntu limitations with multiple interfaces. To solve this problem, please follow the steps mentioned :ref:`here<trn1_ubuntu_troubleshooting>`.
+
+  Users are highly encouraged to use DLAMI to launch the instances, since DLAMIs come with the required fix.

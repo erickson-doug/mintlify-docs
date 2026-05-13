@@ -1,0 +1,110 @@
+.. _neuron_cc:
+
+Neuron Graph Compiler
+======================
+
+The Neuron Graph Compiler is a sophisticated compilation system that transforms Machine Learning models from various frameworks (TensorFlow, MXNet, PyTorch, XLA HLO) into highly optimized code for AWS Neuron accelerators. It performs deep analysis of model structure, applies hardware-specific optimizations, and generates executable code tailored for maximum performance on Neuron hardware.
+
+The Neuron compiler is available in two versions to support different AWS ML accelerator architectures:
+ 
+* **neuronx-cc**: The newer XLA-based compiler supporting NeuronCores v2 architecture (Trn1, Inf2, Trn1n, Trn2). This compiler leverages the XLA (Accelerated Linear Algebra) framework to provide advanced optimizations for modern ML workloads.
+* **neuron-cc**: The TVM-based compiler supporting NeuronCores v1 architecture (Inf1). This compiler uses the TVM (Tensor Virtual Machine) framework as its foundation.
+
+Key capabilities of the Neuron Graph Compiler include:
+
+* **Performance optimization**: Intelligently converts FP32 operations to more efficient formats (BF16/FP16/TF32/FP8) with configurable precision-performance tradeoffs. By default, the compiler automatically casts FP32 matrix multiplication operations to BF16 for optimal performance while maintaining accuracy.
+
+* **Model-specific optimizations**: Provides specialized optimizations for different model architectures:
+  * **Generic**: Applies general optimizations suitable for all model types
+  * **Transformer**: Implements specific optimizations for transformer-based architectures like BERT, GPT, and other attention-based models
+  * **U-Net**: Applies specialized memory optimizations for U-Net architectures to prevent performance-impacting data transfers
+
+* **Distributed training support**: Enables efficient large language model (LLM) training through distribution strategies that shard parameters, gradients, and optimizer states across data-parallel workers.
+
+* **Advanced memory management**: Optimizes memory usage for large models through techniques like model sharding across multiple NeuronCores, with configurable logical NeuronCore settings to control sharding degree.
+
+* **Optimization levels**: Provides multiple optimization levels (1-3) to balance compilation time against runtime performance, allowing users to choose the appropriate tradeoff for their workflow.
+
+* **Mixed precision support**: Offers fine-grained control over precision and performance through auto-casting options, supporting multiple numeric formats (FP32, TF32, FP16, BF16, FP8) with different strengths in dynamic range and numeric precision.
+
+The compilation process is typically transparent to users, as the compiler is invoked automatically within ML frameworks through Neuron Framework plugins. Models are analyzed, optimized, and compiled into a NEFF file (Neuron Executable File Format), which is then loaded by the :doc:`Neuron Runtime </neuron-runtime/index>` for execution on Neuron devices.
+
+.. grid:: 1 
+   :gutter: 3
+
+   .. grid-item-card:: Neuron Graph Compiler Component Release Notes
+      :link: /release-notes/components/compiler
+      :link-type: doc
+
+      Review the Neuron Graph Compiler release notes for all versions of the Neuron SDK.
+
+.. tab-set::
+
+   .. tab-item:: Neuron Graph Compiler (neuronx-cc) for Trn1 & Inf2
+
+      .. grid:: 1 
+         :gutter: 3
+
+         .. grid-item-card:: CLI Reference Guide
+            :link: neuron-compiler-cli-reference-guide
+            :link-type: ref
+
+            Neuron Compiler CLI Reference Guide
+
+         .. grid-item-card:: Graph Compiler Developer Guide
+            :link: neuronx-cc-training-mixed-precision
+            :link-type: ref
+
+            Mixed precision training guide
+
+         .. grid-item-card:: Graph Compiler Error Code Reference
+            :link: ncc-errors-home
+            :link-type: ref
+
+            Error code reference
+
+         .. grid-item-card:: How To Convolute Kernels in UNet Training Models
+            :link: implement-convolution-kernels-unet
+            :link-type: ref
+
+            Learn how to modify UNet training models to use convolution kernels with the AWS Neuron SDK. 
+
+         .. grid-item-card:: Graph Compiler FAQ
+            :link: neuronx_compiler_faq
+            :link-type: ref
+
+            Frequently asked questions
+
+
+   .. tab-item:: Neuron Graph Compiler (neuron-cc) for Inf1
+
+      .. grid:: 1 
+         :gutter: 3
+
+         .. grid-item-card:: Graph Compiler API Reference Guide
+            :link: neuron-compiler-cli-reference
+            :link-type: ref
+
+            Neuron Compiler CLI Reference
+
+         .. grid-item-card:: Graph Compiler Developer Guide
+            :link: neuron-cc-training-mixed-precision
+            :link-type: ref
+
+            Mixed precision training guide
+
+         .. grid-item-card:: Graph Compiler FAQ
+            :link: neuron_compiler_faq
+            :link-type: ref
+
+            Frequently asked questions
+
+
+.. toctree::
+    :maxdepth: 2
+    :hidden:
+
+    /compiler/neuronx-cc
+    /compiler/neuron-cc
+    Error Codes </compiler/error-codes/index>
+    Release Notes </release-notes/components/compiler>

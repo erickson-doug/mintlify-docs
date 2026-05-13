@@ -1,0 +1,2 @@
+* :ref:`nxd-inference_rn`
+* :ref:`nxdi-troubleshooting`

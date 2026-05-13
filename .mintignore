@@ -2,6 +2,24 @@
 # .git, .github, .claude, .agents, .idea, node_modules,
 # README.md, LICENSE.md, CHANGELOG.md, CONTRIBUTING.md
 
+# Local IDE / steering state (specs, migration tooling, design docs).
+.kiro/
+
+# Migration source — read-only, never rendered by Mintlify.
+_old_sphinx_rst_docs/
+
 # Draft content
 drafts/
 *.draft.mdx
+
+# --- TRIAL-ONLY: build just index.mdx -------------------------------
+# Exclude every other page so `mint dev` renders only the Neuron home.
+# Revert with `git checkout .mintignore docs.json` when you want the
+# starter + upcoming migrated content back.
+quickstart.mdx
+development.mdx
+agent-ready/
+ai-tools/
+api-reference/
+essentials/
+# --------------------------------------------------------------------

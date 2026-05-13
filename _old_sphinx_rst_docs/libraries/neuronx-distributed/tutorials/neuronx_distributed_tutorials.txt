@@ -1,0 +1,2 @@
+* :ref:`nxd_training_tutorials`
+* :ref:`nxd_inference_tutorials`

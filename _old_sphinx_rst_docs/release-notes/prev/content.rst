@@ -1,0 +1,1501 @@
+.. _pre-release-content:
+
+Previous release artifacts (Neuron 2.x)
+=======================================
+
+.. contents:: Table of contents
+   :local:
+   :depth: 1
+
+.. _neuron-2.29.0-artifacts:
+
+Neuron 2.29.0 (04/09/2026)
+---------------------------
+
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.29.0
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.29.0
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.29.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.29.0
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.29.0
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.29.0
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Neuron currently supports NumPy versions 2.X. Neuron continues to support NumPy versions >= 1.21.6, as well.
+
+Supported vLLM Versions
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Neuron currently supports vLLM version 0.16.0.
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | >= 4.52                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed-inference    | >= 4.57                          |
++----------------------------------+----------------------------------+
+| vllm                             | >= 4.56.0, < 5                   |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| jax-neuronx                      | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.28.1-artifacts:
+
+Neuron 2.28.1 (03/13/2026)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.1
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.1
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.1
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.1
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.1
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Neuron currently supports NumPy versions 2.X. Neuron continues to support NumPy versions >= 1.21.6, as well.
+
+Supported vLLM Versions
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Neuron currently supports vLLM version 0.13.0.
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | >= 4.52                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed-inference    | >= 4.57                          |
++----------------------------------+----------------------------------+
+| vllm                             | >= 4.56.0, < 5                   |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.28.0-artifacts:
+
+Neuron 2.28.0 (02/26/2026)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.0
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.0
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.0
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.0
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.28.0
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Neuron currently supports NumPy versions 2.X. Neuron continues to support NumPy versions >= 1.21.6, as well.
+
+Supported vLLM Versions
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Neuron currently supports vLLM version 0.13.0.
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | >= 4.52                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed-inference    | >= 4.57                          |
++----------------------------------+----------------------------------+
+| vllm                             | >= 4.56.0, < 5                   |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.27.1-artifacts:
+
+Neuron 2.27.1 (01/14/2026)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.1
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.1
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.1
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.1
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.1
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron currently supports NumPy versions 2.X. Neuron continues to support NumPy versions >= 1.21.6, as well.
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.27.0-artifacts:
+
+Neuron 2.27.0 (12/19/2025)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.0
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.0
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.0
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.0
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.27.0
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron currently supports NumPy versions 2.X. Neuron continues to support NumPy versions >= 1.21.6, as well.
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.26.1-artifacts:
+
+Neuron 2.26.1 (10/29/2025)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.26.1
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.26.1
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.26.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.26.1
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.26.1
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.26.1
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron supports versions >= 1.21.6 and <= 1.22.2
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.25.0-artifacts:
+
+Neuron 2.25.0 (07/31/2025)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.25.0
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.25.0
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.25.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.25.0
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.25.0
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.25.0
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron supports versions >= 1.21.6 and <= 1.22.2
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 4.36.0                        |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 3.20                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.24.0-artifacts:
+
+Neuron 2.24.0 (06/24/2025)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.24.0
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.24.0
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.24.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.24.0
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.24.0
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.24.0
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron supports versions >= 1.21.6 and <= 1.22.2
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 4.36.0                        |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 3.20                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.23.0-artifacts:
+
+Neuron 2.23.0 (05/20/2025)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.23.0
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.23.0
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.23.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.23.0
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.23.0
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.23.0
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron supports versions >= 1.21.6 and <= 1.22.2
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 4.36.0                        |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 3.20                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.22.0-artifacts:
+
+Neuron 2.22.0 (04/03/2025)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.22.0
+
+Trn2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.22.0
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.22.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.22.0
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.22.0
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.22.0
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron supports versions >= 1.21.6 and <= 1.22.2
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 4.36.0                        |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+| nemo-megatron                    | 4.31.0                           |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 3.20                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+.. _neuron-2.21.0-artifacts:
+
+Neuron 2.21.0 (10/25/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.21.0
+
+Trn2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.21.0
+
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.21.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.21.0
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.21.0
+
+Supported Python Versions for Inf2/Trn1/Trn2 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.21.0
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron supports versions >= 1.21.6 and <= 1.22.2
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 4.36.0                        |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+| nemo-megatron                    | 4.31.0                           |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 3.20                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+
+
+
+.. _neuron-2.20.2.beta-artifacts:
+
+Neuron 2.20.2 (11/20/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.2
+
+Inf2 packages
+^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.2
+
+Inf1 packages
+^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.2
+
+Supported Python Versions for Inf1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.2
+
+Supported Python Versions for Inf2/Trn1 packages
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=pyversions --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.2
+
+Supported NumPy Versions
+^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron supports versions >= 1.21.6 and <= 1.22.2
+
+Supported Hugging Face Transformers Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Hugging Face           |
+|                                  | Transformers Versions            |
++==================================+==================================+
+| torch-neuronx                    | < 4.35 and >=4.37.2              |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 4.36.0                        |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Llama      | 4.31                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - GPT NeoX   | 4.26                             |
+| model class                      |                                  |
++----------------------------------+----------------------------------+
+| neuronx-distributed - Bert model | 4.26                             |
+| class                            |                                  |
++----------------------------------+----------------------------------+
+| nemo-megatron                    | 4.31.0                           |
++----------------------------------+----------------------------------+
+
+Supported Protobuf Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++----------------------------------+----------------------------------+
+| Package                          | Supported Protobuf versions      |
++==================================+==================================+
+| neuronx-cc                       | > 3                              |
++----------------------------------+----------------------------------+
+| torch-neuronx                    | >= 3.20                          |
++----------------------------------+----------------------------------+
+| torch-neuron                     | < 3.20                           |
++----------------------------------+----------------------------------+
+| transformers-neuronx             | >= 3.20                          |
++----------------------------------+----------------------------------+
+| neuronx-distributed              | >= 3.20                          |
++----------------------------------+----------------------------------+
+| tensorflow-neuronx               | < 3.20                           |
++----------------------------------+----------------------------------+
+| tensorflow-neuron                | < 3.20                           |
++----------------------------------+----------------------------------+
+
+Supported Linux Kernel Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Neuron Driver (``aws-neuronx-dkms``) supports Linux kernel versions >= 5.10
+
+
+
+Neuron 2.20.1 (10/25/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.1
+
+Neuron 2.20.0 (09/16/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.20.0
+
+Neuron 2.19.1 (07/19/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.19.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.19.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.19.1
+
+Neuron 2.19.0 (07/03/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.19.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.19.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.19.0
+
+Neuron 2.18.2 (04/25/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.2
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.2
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.2
+
+
+Neuron 2.18.1 (04/10/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.1
+
+Neuron 2.18.0 (04/01/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.18.0
+
+
+Neuron 2.17.0 (02/13/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.17.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.17.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.17.0
+
+
+Neuron 2.16.1 (01/18/2024)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.16.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.16.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.16.1
+
+
+Neuron 2.16.0 (12/21/2023)
+---------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.16.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.16.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.16.0
+
+
+
+Neuron 2.15.2 (11/17/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.2
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.2
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.2
+
+
+Neuron 2.15.1 (11/09/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.1
+
+
+Neuron 2.15.0 (10/26/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.15.0
+
+
+
+Neuron 2.14.1 (09/26/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.14.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.14.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.14.1
+
+
+
+Neuron 2.14.0 (09/15/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.14.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.14.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.14.0
+
+
+Neuron 2.13.2 (09/01/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.2
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.2
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.2
+
+
+Neuron 2.13.1 (08/29/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.1
+
+
+Neuron 2.13.0 (08/28/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.13.0
+
+
+Neuron 2.12.2 (08/20/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.2
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.2
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.2
+
+
+Neuron 2.12.1 (08/09/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.1
+
+
+Neuron 2.12.0 (07/19/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.12.0
+
+
+Neuron 2.11.0 (06/14/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.11.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.11.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.11.0
+
+
+Neuron 2.10.0 (05/01/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.10.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.10.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.10.0
+
+
+
+Neuron 2.9.1 (04/19/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.9.1
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.9.1
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.9.1
+
+
+
+Neuron 2.9.0 (03/28/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.9.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.9.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.9.0
+
+
+
+Neuron 2.8.0 (02/24/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.8.0
+
+Inf2 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf2 --file=src/helperscripts/n2-manifest.json --neuron-version=2.8.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=inf1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.8.0
+
+
+
+Neuron 2.7.0 (02/08/2023)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/n2-helper.py --list=packages --instance=trn1 --file=src/helperscripts/n2-manifest.json --neuron-version=2.7.0
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/neuronsetuphelper.py --file src/helperscripts/neuron-releases-manifest.json --list packages --neuron-version=2.7.0
+
+Neuron 2.6.0 (12/12/2022)
+--------------------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+* ``aws-neuronx-dkms-2.6.33.0``
+* ``aws-neuronx-oci-hook-2.1.14.0``
+* ``aws-neuronx-runtime-lib-2.10.30.0``
+* ``aws-neuronx-collectives-2.10.37.0``
+* ``aws-neuronx-tools-2.6.1.0``
+* ``aws-neuronx-k8-plugin-2.1.12.0``
+* ``aws-neuronx-k8-scheduler-2.1.12.0``
+* ``tensorboard_plugin_neuronx-2.5.3.0``
+* ``neuronx-cc-2.3.0.4``
+* ``torch-neuronx-1.12.0.1.4.0``
+* ``tensorflow-model-server-neuronx_1.15.0.2.5.6.0``
+* ``tensorflow-model-server-neuronx_2.5.4.2.5.6.0``
+* ``tensorflow-model-server-neuronx_2.6.3.2.5.6.0``
+* ``tensorflow-model-server-neuronx_2.7.0.2.5.6.0``
+* ``tensorflow-model-server-neuronx_2.8.0.2.5.6.0``
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/neuronsetuphelper.py --file src/helperscripts/neuron-releases-manifest.json --list packages --neuron-version=2.6.0
+
+Neuron 2.5.0 (11/23/2022)
+-------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+* ``aws-neuronx-dkms-2.6.33.0``
+* ``aws-neuronx-oci-hook-2.1.14.0``
+* ``aws-neuronx-runtime-lib-2.10.27.0``
+* ``aws-neuronx-collectives-2.10.34.0``
+* ``aws-neuronx-tools-2.5.19.0``
+* ``aws-neuronx-k8-plugin-2.1.12.0``
+* ``aws-neuronx-k8-scheduler-2.1.12.0``
+* ``neuronx-cc-2.2.0.73``
+* ``torch-neuronx-1.11.0.1.2.0``
+* ``tensorflow-model-server-neuronx_1.15.0.2.5.6.0``
+* ``tensorflow-model-server-neuronx_2.5.4.2.5.6.0``
+* ``tensorflow-model-server-neuronx_2.6.3.2.5.6.0``
+* ``tensorflow-model-server-neuronx_2.7.0.2.5.6.0``
+* ``tensorflow-model-server-neuronx_2.8.0.2.5.6.0``
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/neuronsetuphelper.py --file src/helperscripts/neuron-releases-manifest.json --list packages --neuron-version=2.5.0
+   
+
+Neuron 2.4.0 (10/27/2022)
+--------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+* ``aws-neuronx-dkms-2.6.5.0``
+* ``aws-neuronx-oci-hook-2.1.1.0``
+* ``aws-neuronx-runtime-lib-2.10.15.0``
+* ``aws-neuronx-collectives-2.10.17.0``
+* ``aws-neuronx-tools-2.5.16.0``
+* ``aws-neuronx-k8-plugin-2.1.2.0``
+* ``aws-neuronx-k8-scheduler-2.1.2.0``
+* ``neuronx-cc-2.2.0.73``
+* ``torch-neuronx-1.11.0.1.2.0``
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/neuronsetuphelper.py --file src/helperscripts/neuron-releases-manifest.json --list packages --neuron-version=2.4.0
+
+
+Neuron 2.3.0 (10/10/2022)
+-------------------------
+
+Trn1 packages
+^^^^^^^^^^^^^
+
+* ``aws-neuronx-dkms-2.5.41.0``
+* ``aws-neuronx-oci-hook-2.0.16.0``
+* ``aws-neuronx-runtime-lib-2.9.64.0``
+* ``aws-neuronx-collectives-2.9.86.0``
+* ``aws-neuronx-tools-2.4.14.0``
+* ``aws-neuronx-k8-plugin-2.0.1.0``
+* ``aws-neuronx-k8-scheduler-2.0.1.0``
+* ``neuronx-cc-2.1.0.76``
+* ``torch-neuronx-1.11.0.1.1.1``
+
+Inf1 packages
+^^^^^^^^^^^^^
+
+.. program-output:: python3 src/helperscripts/neuronsetuphelper.py --file src/helperscripts/neuron-releases-manifest.json --list packages --neuron-version=2.3.0
