@@ -3,10 +3,13 @@
 # README.md, LICENSE.md, CHANGELOG.md, CONTRIBUTING.md
 
 # Local IDE / steering state (specs, migration tooling, design docs).
+# Use both trailing-slash and glob forms to be safe across ignore matchers.
 .kiro/
+.kiro/**
 
 # Migration source — read-only, never rendered by Mintlify.
 _old_sphinx_rst_docs/
+_old_sphinx_rst_docs/**
 
 # Draft content
 drafts/
